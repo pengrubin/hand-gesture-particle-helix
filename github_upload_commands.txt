@@ -1,0 +1,61 @@
+# GitHub上传命令指南
+
+# 1. 初始化Git仓库
+git init
+
+# 2. 添加所有文件到暂存区
+git add .
+
+# 3. 检查要提交的文件
+git status
+
+# 4. 创建第一次提交
+git commit -m "Initial commit: Hand Gesture Particle Helix System
+
+✨ Features:
+- 9 spiral structures including DNA double helix
+- 18 wave patterns with real-time hand control  
+- MediaPipe hand tracking integration
+- OpenGL 3D rendering with particle physics
+- Comprehensive gesture mapping system
+
+🔧 Generated with Claude Code
+Co-Authored-By: Claude <noreply@anthropic.com>"
+
+# 5. 添加GitHub远程仓库（替换YOUR_USERNAME为你的GitHub用户名）
+git remote add origin https://github.com/YOUR_USERNAME/hand-gesture-particle-helix.git
+
+# 6. 检查远程仓库连接
+git remote -v
+
+# 7. 推送到GitHub（首次推送）
+git push -u origin main
+
+# === 后续更新命令 ===
+
+# 添加修改的文件
+git add .
+
+# 提交更新
+git commit -m "Update: describe your changes here"
+
+# 推送更新
+git push
+
+# === 其他有用命令 ===
+
+# 查看提交历史
+git log --oneline
+
+# 查看当前状态
+git status
+
+# 查看文件差异
+git diff
+
+# 创建新分支
+git checkout -b feature/new-feature-name
+
+# 切换分支
+git checkout main
+git checkout feature/branch-name
