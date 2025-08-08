@@ -16,17 +16,18 @@ class HandGestureDetector:
         self.mp_hands = mp.solutions.hands
         self.hands = self.mp_hands.Hands(
             static_image_mode=False,
-            max_num_hands=2,
+            max_num_hands=3,
             min_detection_confidence=0.7,
             min_tracking_confidence=0.5
         )
         self.mp_drawing = mp.solutions.drawing_utils
         
-        # 手势状态变量
+        # 手势状态变量 - 支持最多3只手
         self.gesture_data = {
             'hands_detected': 0,
-            'left_hand': {'detected': False, 'landmarks': []},
-            'right_hand': {'detected': False, 'landmarks': []},
+            'hands': [],  # 存储所有检测到的手
+            'digit_gestures': [],  # 存储数字手势 [1, 2, 3]
+            'active_audio_tracks': set(),  # 当前应该播放的音轨
             'gesture_type': 'none',
             'finger_distances': [],
             'hand_openness': 0.0,
@@ -35,7 +36,7 @@ class HandGestureDetector:
         }
         
     def detect_gesture_type(self, landmarks):
-        """根据关键点检测手势类型"""
+        """根据关键点检测手势类型，专门识别数字1、2、3"""
         if not landmarks or len(landmarks) < 21:
             return 'none'
         
@@ -50,38 +51,39 @@ class HandGestureDetector:
         middle_pip = landmarks[10]
         ring_pip = landmarks[14]
         pinky_pip = landmarks[18]
+        thumb_ip = landmarks[3]
         
         # 检测手指是否伸直
         fingers_up = []
         
-        # 拇指 (特殊处理，水平比较)
-        if landmarks[4][0] > landmarks[3][0]:  # 右手
-            fingers_up.append(thumb_tip[0] > landmarks[3][0])
-        else:  # 左手
-            fingers_up.append(thumb_tip[0] < landmarks[3][0])
-            
-        # 其他四个手指 (垂直比较)
+        # 拇指检测 (改进的检测方法)
+        thumb_up = thumb_tip[0] > thumb_ip[0] if landmarks[4][0] > landmarks[3][0] else thumb_tip[0] < thumb_ip[0]
+        fingers_up.append(thumb_up)
+        
+        # 其他四个手指 (垂直比较，指尖高于第二关节)
         for tip, pip in [(index_tip, index_pip), (middle_tip, middle_pip), 
                         (ring_tip, ring_pip), (pinky_tip, pinky_pip)]:
             fingers_up.append(tip[1] < pip[1])
         
-        # 根据伸直的手指数量判断手势
+        # 根据伸直的手指数量和组合判断数字手势
         fingers_count = sum(fingers_up)
         
-        if fingers_count == 0:
-            return 'fist'
-        elif fingers_count == 1:
-            return 'one'
-        elif fingers_count == 2:
-            return 'two'
-        elif fingers_count == 3:
-            return 'three'
-        elif fingers_count == 4:
-            return 'four'
-        elif fingers_count == 5:
-            return 'open_hand'
-        else:
-            return 'unknown'
+        # 专门识别数字1、2、3的逻辑（更灵活的识别）
+        
+        # 数字1：食指伸出（可以包含拇指）
+        if fingers_up[1] and not fingers_up[2] and not fingers_up[3] and not fingers_up[4]:
+            return 1
+            
+        # 数字2：食指和中指都伸出（可以包含拇指）
+        if fingers_up[1] and fingers_up[2] and not fingers_up[3] and not fingers_up[4]:
+            return 2
+            
+        # 数字3：食指、中指、无名指都伸出（可以包含拇指）
+        if fingers_up[1] and fingers_up[2] and fingers_up[3] and not fingers_up[4]:
+            return 3
+        
+        # 如果不是目标数字手势，返回none
+        return 'none'
     
     def calculate_hand_openness(self, landmarks):
         """计算手部张开程度 (0-1)"""
@@ -127,8 +129,9 @@ class HandGestureDetector:
         
         # 重置检测数据
         self.gesture_data['hands_detected'] = 0
-        self.gesture_data['left_hand']['detected'] = False
-        self.gesture_data['right_hand']['detected'] = False
+        self.gesture_data['hands'] = []
+        self.gesture_data['digit_gestures'] = []
+        self.gesture_data['active_audio_tracks'] = set()
         
         if results.multi_hand_landmarks and results.multi_handedness:
             self.gesture_data['hands_detected'] = len(results.multi_hand_landmarks)
@@ -141,29 +144,36 @@ class HandGestureDetector:
                 
                 # 确定左右手
                 hand_label = handedness.classification[0].label.lower()
+                gesture_number = self.detect_gesture_type(landmarks)
                 
-                # 存储数据
+                # 存储手部数据
                 hand_data = {
+                    'id': i,
+                    'label': hand_label,
                     'detected': True,
                     'landmarks': landmarks,
-                    'gesture_type': self.detect_gesture_type(landmarks),
+                    'gesture_number': gesture_number,
                     'openness': self.calculate_hand_openness(landmarks),
                     'center': self.calculate_hand_center(landmarks)
                 }
                 
-                if hand_label == 'left':
-                    self.gesture_data['left_hand'] = hand_data
-                else:
-                    self.gesture_data['right_hand'] = hand_data
+                self.gesture_data['hands'].append(hand_data)
+                
+                # 如果是数字手势，添加到数字手势列表
+                if gesture_number in [1, 2, 3]:
+                    self.gesture_data['digit_gestures'].append(gesture_number)
+                    self.gesture_data['active_audio_tracks'].add(gesture_number)
                 
                 # 绘制关键点 (可选)
                 self.mp_drawing.draw_landmarks(
                     frame, hand_landmarks, self.mp_hands.HAND_CONNECTIONS)
         
         # 计算综合手势强度
-        left_strength = self.gesture_data['left_hand']['openness'] if self.gesture_data['left_hand']['detected'] else 0
-        right_strength = self.gesture_data['right_hand']['openness'] if self.gesture_data['right_hand']['detected'] else 0
-        self.gesture_data['gesture_strength'] = max(left_strength, right_strength)
+        total_strength = 0
+        for hand in self.gesture_data['hands']:
+            total_strength += hand['openness']
+        
+        self.gesture_data['gesture_strength'] = total_strength / max(1, len(self.gesture_data['hands']))
         
         return frame
 
