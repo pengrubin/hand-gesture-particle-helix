@@ -195,3 +195,20 @@ debug_images/
 # Personal config files
 config.local.py
 settings.local.json
+
+# Audio files (potentially copyrighted)
+*.mp3
+*.wav
+*.m4a
+*.aac
+*.flac
+*.ogg
+
+# Debug and test scripts
+debug_*.py
+test_*.py
+simple_*.py
+
+# Audio test files
+audio_test*
+sound_test*
