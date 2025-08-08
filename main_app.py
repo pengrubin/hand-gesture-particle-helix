@@ -148,28 +148,28 @@ class GestureParticleApp:
         left_hand = gesture_data.get('left_hand', {})
         if left_hand.get('detected', False):
             gesture = left_hand.get('gesture', 'none')
-            digit = self.gesture_name_to_digit(gesture)
-            if digit:
-                digit_gestures.append(digit)
+            digits = self.gesture_name_to_digits(gesture)
+            digit_gestures.extend(digits)
         
         # 检查右手
         right_hand = gesture_data.get('right_hand', {})
         if right_hand.get('detected', False):
             gesture = right_hand.get('gesture', 'none')
-            digit = self.gesture_name_to_digit(gesture)
-            if digit:
-                digit_gestures.append(digit)
+            digits = self.gesture_name_to_digits(gesture)
+            digit_gestures.extend(digits)
         
-        return digit_gestures
+        # 去重并排序
+        return sorted(list(set(digit_gestures)))
     
-    def gesture_name_to_digit(self, gesture_name):
-        """将手势名称转换为数字"""
+    def gesture_name_to_digits(self, gesture_name):
+        """将手势名称转换为数字列表"""
         gesture_map = {
-            'one': 1,      # 一个手指 -> 数字1
-            'two': 2,      # 两个手指 -> 数字2  
-            'three': 3,    # 三个手指 -> 数字3
+            'one': [1],         # 一个手指 -> 小提琴
+            'two': [2],         # 两个手指 -> 鲁特琴  
+            'three': [3],       # 三个手指 -> 管风琴
+            'open_hand': [1, 2, 3],  # 张开手掌 -> 所有音轨
         }
-        return gesture_map.get(gesture_name, None)
+        return gesture_map.get(gesture_name, [])
     
     def update_audio_from_gestures(self, digit_gestures):
         """根据数字手势更新音频播放（同步播放模式）"""
@@ -305,8 +305,9 @@ class GestureParticleApp:
                 print("- 1️⃣ 食指 → 播放小提琴声部")
                 print("- 2️⃣ 食指+中指 → 播放鲁特琴声部") 
                 print("- 3️⃣ 食指+中指+无名指 → 播放管风琴声部")
-                print("- 可同时做多个数字手势播放多个声部")
-                print("- 无数字手势时所有音轨静音\n")
+                print("- ✋ 张开手掌 → 播放所有声部（完整合奏）")
+                print("- 可同时做多个手势创造复杂音乐组合")
+                print("- 无手势时所有音轨静音\n")
             else:
                 print("\n⚠️ 音频功能未启用（音频文件缺失）\n")
             

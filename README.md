@@ -21,7 +21,8 @@ A pure Python implementation featuring 18 different wave shapes and 9 spiral str
 | ☝️ **1 Finger** → 🎻 **Violin** | Classical string melody |
 | ✌️ **2 Fingers** → 🎸 **Lute** | Renaissance plucked strings |
 | 🤟 **3 Fingers** → 🎹 **Organ** | Rich harmonic foundation |
-| 🤘 **Multiple gestures** → 🎼 **Full Orchestra** | Layer multiple tracks |
+| ✋ **Open Hand** → 🎼 **Full Orchestra** | Complete ensemble playing |
+| 🤘 **Multiple gestures** → 🎼 **Custom Mix** | Layer selected instruments |
 
 ### 🌀 9 Spiral Structures
 - **DNA Double Helix** - Classic biological structure with connecting bridges
@@ -57,6 +58,7 @@ A pure Python implementation featuring 18 different wave shapes and 9 spiral str
 | ☝️ **1 Finger** | 🎻 Violin | Classical string melody |
 | ✌️ **2 Fingers** | 🎸 Lute | Renaissance plucked strings |
 | 🤟 **3 Fingers** | 🎹 Organ | Rich harmonic foundation |
+| ✋ **Open Hand** | 🎼 **Full Orchestra** | All three tracks together |
 | 🤘 **Multiple** | 🎼 Mixed | Layer multiple instruments |
 
 ## 🚀 Quick Start
