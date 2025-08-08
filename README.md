@@ -9,6 +9,20 @@ A pure Python implementation featuring 18 different wave shapes and 9 spiral str
 
 ## ✨ Features
 
+### 🎵 NEW: Synchronized Multi-Track Audio Control
+- **Real-time gesture-controlled audio mixing**
+- **3 synchronized audio tracks** playing simultaneously
+- **Seamless track switching** with volume control
+- **No interruption** - maintain perfect timing when switching between tracks
+- **Multi-gesture support** - combine tracks for rich musical compositions
+
+| Audio Gesture | Track | Effect |
+|---------------|-------|---------|
+| ☝️ **1 Finger** → 🎻 **Violin** | Classical string melody |
+| ✌️ **2 Fingers** → 🎸 **Lute** | Renaissance plucked strings |
+| 🤟 **3 Fingers** → 🎹 **Organ** | Rich harmonic foundation |
+| 🤘 **Multiple gestures** → 🎼 **Full Orchestra** | Layer multiple tracks |
+
 ### 🌀 9 Spiral Structures
 - **DNA Double Helix** - Classic biological structure with connecting bridges
 - **Triple Helix** - Three intertwined spirals
@@ -24,9 +38,11 @@ A pure Python implementation featuring 18 different wave shapes and 9 spiral str
 - Zigzag patterns, multiple parallel lines
 - **Plus 9 new spiral patterns**
 
-### 🎮 Intuitive Hand Controls
-| Gesture | Effect |
-|---------|--------|
+### 🎮 Dual-Layer Hand Controls
+
+**Visual Effects (Particle Spirals):**
+| Gesture | Visual Effect |
+|---------|---------------|
 | 👊 **Fist** → Tornado Spiral | Fast twisting, high turbulence |
 | ☝️ **1 Finger** → DNA Double Helix | Classic biological structure |
 | ✌️ **2 Fingers** → Triple Helix | Three-strand spiral |
@@ -35,12 +51,22 @@ A pure Python implementation featuring 18 different wave shapes and 9 spiral str
 | ✋ **Open Hand** → Galaxy Spiral | Cosmic spiral arms |
 | 🙌 **Both Hands** → Multi-Helix Tower | Multiple spirals, controlled by distance |
 
+**Audio Control (Simultaneous):**
+| Gesture | Audio Track | Description |
+|---------|-------------|-------------|
+| ☝️ **1 Finger** | 🎻 Violin | Classical string melody |
+| ✌️ **2 Fingers** | 🎸 Lute | Renaissance plucked strings |
+| 🤟 **3 Fingers** | 🎹 Organ | Rich harmonic foundation |
+| 🤘 **Multiple** | 🎼 Mixed | Layer multiple instruments |
+
 ## 🚀 Quick Start
 
 ### Prerequisites
 - Python 3.7+
 - Webcam
 - OpenGL-compatible graphics card
+- Audio output device (speakers/headphones)
+- MP3 audio files (for full audio experience)
 
 ### Installation
 
@@ -65,6 +91,14 @@ python run.py
 python run.py test
 ```
 
+### 🎵 Audio Setup (Optional)
+For the full audio experience, place MP3 files in the project directory:
+- `Fugue in G Trio violin-Violin.mp3` (Track 1 - Violin)
+- `Fugue in G Trio-Tenor_Lute.mp3` (Track 2 - Lute)  
+- `Fugue in G Trio Organ-Organ.mp3` (Track 3 - Organ)
+
+**Note**: The application will work without audio files, just without sound.
+
 ## 🎯 Usage
 
 ### Basic Controls
@@ -72,6 +106,9 @@ python run.py test
 - **R**: Reset camera view
 - **S**: Manually cycle through shapes
 - **C**: Toggle camera window
+- **M**: Toggle audio control on/off
+- **I**: Toggle info display
+- **W**: Toggle wireframe display
 - **1-5**: Adjust particle count
 - **ESC**: Exit
 
