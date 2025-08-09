@@ -13,6 +13,7 @@ from gesture_detector import GestureDetector
 from render_engine import RenderEngine
 from particle_sphere_system import ParticleSphereSystem
 from hand_gesture_detector import HandGestureDetector
+from advanced_audio_manager import AdvancedAudioManager
 
 class GestureParticleApp:
     def __init__(self):
@@ -31,8 +32,9 @@ class GestureParticleApp:
         except Exception as e:
             print(f"✗ Pygame音频初始化失败: {e}")
         
-        # 初始化音频系统
-        self.init_audio_system()
+        # 初始化高级音频管理器
+        self.audio_manager = AdvancedAudioManager()
+        self.audio_enabled = self.audio_manager.initialize()
         
         # 最后初始化渲染引擎（可能会重新初始化pygame）
         print("初始化渲染引擎...")
@@ -64,81 +66,6 @@ class GestureParticleApp:
         print("✓ 渲染引擎初始化完成")
         print("✓ 粒子系统初始化完成")
     
-    def init_audio_system(self):
-        """初始化音频系统"""
-        print("正在初始化音频系统...")
-        
-        # 音频文件配置（确保文件名完全匹配）
-        self.audio_files = {
-            1: "Fugue in G Trio violin-Violin.mp3",      # 小提琴声部
-            2: "Fugue in G Trio-Tenor_Lute.mp3",        # 鲁特琴声部  
-            3: "Fugue in G Trio Organ-Organ.mp3"        # 管风琴声部
-        }
-        
-        # 调试：输出实际存在的文件
-        print("检查音频文件存在性:")
-        import glob
-        actual_files = glob.glob("Fugue in G Trio*.mp3")
-        for f in actual_files:
-            print(f"  实际文件: {f}")
-        
-        print("期望的文件映射:")
-        for track_id, filename in self.audio_files.items():
-            exists = os.path.exists(filename)
-            print(f"  音轨{track_id}: {filename} {'✅存在' if exists else '❌缺失'}")
-        
-        # 检查音频文件是否存在
-        missing_files = []
-        for track_id, filename in self.audio_files.items():
-            if not os.path.exists(filename):
-                missing_files.append(filename)
-        
-        if missing_files:
-            print("⚠️ 部分音频文件缺失:")
-            for file in missing_files:
-                print(f"   - {file}")
-            print("音频功能将被禁用")
-            self.audio_enabled = False
-            return
-        
-        # 加载音频文件
-        self.audio_sounds = {}
-        self.audio_channels = {}
-        self.audio_volumes = {1: 0.0, 2: 0.0, 3: 0.0}
-        self.playing_tracks = set()
-        self.master_playing = False  # 主播放状态
-        self.sync_start_time = None  # 同步播放开始时间
-        
-        for track_id, filename in self.audio_files.items():
-            try:
-                print(f"🔄 正在加载音轨{track_id}: {filename}")
-                sound = pygame.mixer.Sound(filename)
-                sound.set_volume(0.0)  # 初始音量为0
-                
-                # 测试文件是否真的可以播放
-                length = sound.get_length()
-                print(f"  📏 音频长度: {length:.2f}秒")
-                
-                self.audio_sounds[track_id] = sound
-                self.audio_channels[track_id] = pygame.mixer.Channel(track_id - 1)
-                
-                print(f"✅ 音轨{track_id}加载成功: {filename}")
-            except Exception as e:
-                print(f"❌ 音轨{track_id}加载失败: {e}")
-                # 不要完全禁用音频系统，只是跳过这个文件
-                print(f"⚠️ 跳过音轨{track_id}，继续加载其他文件...")
-                continue
-        
-        # 检查是否至少有一个文件加载成功
-        if not self.audio_sounds:
-            print("❌ 没有任何音频文件加载成功，禁用音频功能")
-            self.audio_enabled = False
-            return
-        else:
-            loaded_tracks = list(self.audio_sounds.keys())
-            print(f"✅ 成功加载 {len(loaded_tracks)} 个音轨: {loaded_tracks}")
-        
-        print("✓ 音频系统初始化完成")
     
     def convert_gesture_to_digits(self, gesture_data):
         """将现有手势数据转换为数字手势"""
@@ -172,97 +99,12 @@ class GestureParticleApp:
         return gesture_map.get(gesture_name, [])
     
     def update_audio_from_gestures(self, digit_gestures):
-        """根据数字手势更新音频播放（同步播放模式）"""
+        """根据数字手势更新音频播放（支持断点续播）"""
         if not self.audio_enabled:
             return
         
-        if not hasattr(self, 'audio_sounds') or not self.audio_sounds:
-            print("⚠️ 音频系统未正确初始化")
-            return
-        
-        active_gestures = set(digit_gestures)
-        
-        # 调试信息（每60帧输出一次，避免刷屏）
-        if not hasattr(self, '_debug_counter'):
-            self._debug_counter = 0
-        self._debug_counter += 1
-        
-        if self._debug_counter % 60 == 0:  # 每秒输出一次
-            volumes_str = {k: f"{v:.2f}" for k, v in self.audio_volumes.items()}
-            print(f"🎵 同步音频: 手势={digit_gestures}, 主播放={self.master_playing}, 音量={volumes_str}")
-        
-        # 检查是否需要启动或停止主播放
-        has_any_gesture = len(active_gestures) > 0
-        
-        if has_any_gesture and not self.master_playing:
-            # 启动同步播放：同时播放所有音轨
-            print("🎼 启动同步播放所有音轨")
-            import time
-            self.sync_start_time = time.time()
-            
-            for track_id in self.audio_sounds.keys():
-                try:
-                    # 所有音轨同时开始播放，初始音量为0
-                    self.audio_sounds[track_id].set_volume(0.0)
-                    self.audio_channels[track_id].play(self.audio_sounds[track_id], loops=-1)
-                    self.playing_tracks.add(track_id)
-                except Exception as e:
-                    print(f"❌ 启动音轨{track_id}失败: {e}")
-            
-            self.master_playing = True
-            print(f"✅ 所有音轨已同步启动，播放中: {list(self.playing_tracks)}")
-        
-        elif not has_any_gesture and self.master_playing:
-            # 停止所有播放：淡出然后停止
-            print("🔇 停止同步播放")
-            # 先快速淡出所有音轨
-            for track_id in self.audio_sounds.keys():
-                self.audio_volumes[track_id] = 0.0
-                try:
-                    self.audio_sounds[track_id].set_volume(0.0)
-                except Exception as e:
-                    print(f"❌ 设置音轨{track_id}音量失败: {e}")
-            
-            # 稍后停止播放（给淡出一点时间）
-            import threading
-            def stop_all_delayed():
-                import time
-                time.sleep(0.5)  # 等待0.5秒让淡出完成
-                for track_id in list(self.playing_tracks):
-                    try:
-                        self.audio_channels[track_id].stop()
-                    except Exception as e:
-                        print(f"❌ 停止音轨{track_id}失败: {e}")
-                self.playing_tracks.clear()
-                self.master_playing = False
-                print("✅ 所有音轨已停止")
-            
-            threading.Thread(target=stop_all_delayed, daemon=True).start()
-        
-        # 如果正在播放，更新各音轨的音量
-        if self.master_playing:
-            for track_id in self.audio_sounds.keys():
-                should_be_audible = track_id in active_gestures
-                
-                # 计算目标音量
-                target_vol = 1.0 if should_be_audible else 0.0
-                
-                # 平滑音量变化
-                current_vol = self.audio_volumes[track_id]
-                volume_change_speed = 0.15  # 调整切换速度
-                new_vol = current_vol + (target_vol - current_vol) * volume_change_speed
-                
-                # 更新音量
-                self.audio_volumes[track_id] = new_vol
-                try:
-                    self.audio_sounds[track_id].set_volume(new_vol)
-                except Exception as e:
-                    print(f"❌ 设置音轨{track_id}音量失败: {e}")
-                
-                # 记录音量变化（仅用于调试）
-                if abs(new_vol - current_vol) > 0.01 and self._debug_counter % 30 == 0:
-                    status = "📈升高" if new_vol > current_vol else "📉降低"
-                    print(f"  音轨{track_id}: {status} {current_vol:.2f} → {new_vol:.2f}")
+        # 使用新的高级音频管理器
+        self.audio_manager.update_from_gestures(digit_gestures)
     
     def start(self):
         """启动应用"""
@@ -280,12 +122,13 @@ class GestureParticleApp:
             print("\n=== 应用启动成功！===")
             print("控制说明：")
             print("- 鼠标左键拖拽：旋转视角")
-            print("- R键：重置视角")
+            print("- R键：重置视角和音频位置")
             print("- C键：切换摄像头窗口显示")
             print("- W键：切换线框显示")
             print("- I键：切换信息显示")
             print("- S键：切换波浪形状")
             print("- M键：切换音频开关")
+            print("- P键：手动暂停/继续音频播放")
             print("- ESC键：退出应用")
             print("- 数字键1-5：调整粒子数量")
             print("\n🧬 手势控制 → 螺旋结构：")
@@ -301,13 +144,15 @@ class GestureParticleApp:
             print("- 双手距离：控制螺旋数量和连接桥")
             
             if self.audio_enabled:
-                print("\n🎵 数字手势 → 音频控制：")
+                print("\n🎵 数字手势 → 断点续播音频控制：")
                 print("- 1️⃣ 食指 → 播放小提琴声部")
                 print("- 2️⃣ 食指+中指 → 播放鲁特琴声部") 
                 print("- 3️⃣ 食指+中指+无名指 → 播放管风琴声部")
                 print("- ✋ 张开手掌 → 播放所有声部（完整合奏）")
                 print("- 可同时做多个手势创造复杂音乐组合")
-                print("- 无手势时所有音轨静音\n")
+                print("- 无手势时暂停播放，继续手势时从断点继续播放")
+                print("- P键：手动暂停/继续播放")
+                print("- R键：重置播放位置到开头\n")
             else:
                 print("\n⚠️ 音频功能未启用（音频文件缺失）\n")
             
@@ -375,11 +220,6 @@ class GestureParticleApp:
         """处理按键事件"""
         if key == pygame.K_ESCAPE:
             self.is_running = False
-        elif key == pygame.K_r:
-            # 重置相机
-            self.render_engine.camera_yaw = 0
-            self.render_engine.camera_pitch = 0
-            print("视角已重置")
         elif key == pygame.K_c:
             # 切换摄像头显示
             self.show_camera = not self.show_camera
@@ -396,18 +236,37 @@ class GestureParticleApp:
             print(f"信息显示: {'开' if self.params['show_info'] else '关'}")
         elif key == pygame.K_m:
             # 切换音频开关
-            if hasattr(self, 'audio_sounds') and self.audio_sounds:
+            if hasattr(self, 'audio_manager') and self.audio_manager.enabled:
                 self.audio_enabled = not self.audio_enabled
                 if not self.audio_enabled:
-                    # 停止所有音频
-                    for track_id in list(self.playing_tracks):
-                        self.audio_channels[track_id].stop()
-                    self.playing_tracks.clear()
-                    for track_id in self.audio_volumes:
-                        self.audio_volumes[track_id] = 0.0
+                    # 暂停所有音频
+                    self.audio_manager.pause_playback()
                 print(f"音频控制: {'开' if self.audio_enabled else '关'}")
             else:
                 print("音频系统未初始化")
+        elif key == pygame.K_p:
+            # P键：手动暂停/继续音频
+            if hasattr(self, 'audio_manager') and self.audio_manager.enabled:
+                if self.audio_manager.master_playing:
+                    self.audio_manager.pause_playback()
+                    print("⏸️ 手动暂停音频")
+                else:
+                    # 从当前位置继续播放
+                    self.audio_manager.start_playback_from_position()
+                    print("▶️ 从断点继续播放")
+            else:
+                print("音频系统未初始化")
+        elif key == pygame.K_r:
+            # R键：重置摄像头视角和音频位置
+            # 重置相机
+            self.render_engine.camera_yaw = 0
+            self.render_engine.camera_pitch = 0
+            print("视角已重置")
+            
+            # 重置音频位置
+            if hasattr(self, 'audio_manager') and self.audio_manager.enabled:
+                self.audio_manager.reset_position()
+                print("音频位置已重置")
         elif key == pygame.K_s:
             # 手动切换波浪形状
             new_shape = self.particle_sphere_system.particle_system.cycle_shape_mode()
@@ -578,24 +437,30 @@ class GestureParticleApp:
             info_lines.append(f"R: {right['gesture']}")
         
         # 添加音频信息
-        if self.audio_enabled:
+        if self.audio_enabled and hasattr(self, 'audio_manager'):
             info_lines.append("--- Audio ---")
             info_lines.append(f"Digits: {digit_gestures}")
             
-            # 显示播放状态（同步播放模式）
+            # 获取音频状态信息
+            audio_status_info = self.audio_manager.get_status_info()
+            
+            # 显示播放状态（断点续播模式）
             audio_status = []
-            if hasattr(self, 'audio_sounds'):
-                if hasattr(self, 'master_playing') and self.master_playing:
-                    audio_status.append(f"SYNC: {'ON' if self.master_playing else 'OFF'}")
-                    for track_id in self.audio_sounds.keys():
-                        volume = self.audio_volumes.get(track_id, 0)
-                        audible = volume > 0.1
-                        status = "🔊" if audible else "🔇"
-                        audio_status.append(f"T{track_id}:{status}({volume:.1f})")
-                else:
-                    audio_status.append("SYNC: STOPPED")
+            if audio_status_info['enabled']:
+                playing_status = "▶️" if audio_status_info['master_playing'] else "⏸️"
+                audio_status.append(f"Status: {playing_status}")
+                
+                # 显示播放位置
+                current_pos = audio_status_info['current_position']
+                audio_status.append(f"Time: {current_pos:.1f}s")
+                
+                # 显示各音轨状态
+                for track_id, volume in audio_status_info['volumes'].items():
+                    audible = volume > 0.1
+                    status = "🔊" if audible else "🔇"
+                    audio_status.append(f"T{track_id}:{status}({volume:.1f})")
             else:
-                audio_status.append("No audio tracks loaded")
+                audio_status.append("No audio manager")
             
             info_lines.extend(audio_status)
         else:
@@ -628,13 +493,9 @@ class GestureParticleApp:
         
         # 清理音频资源
         try:
-            if hasattr(self, 'master_playing') and self.master_playing:
-                # 停止同步播放
-                for track_id in list(self.playing_tracks):
-                    self.audio_channels[track_id].stop()
-                self.playing_tracks.clear()
-                self.master_playing = False
-                print("✓ 同步音频播放已停止")
+            if hasattr(self, 'audio_manager'):
+                self.audio_manager.cleanup()
+                print("✓ 高级音频管理器已清理")
             
             pygame.mixer.quit()
             print("✓ 音频系统已清理")

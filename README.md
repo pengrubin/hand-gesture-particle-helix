@@ -9,20 +9,23 @@ A pure Python implementation featuring 18 different wave shapes and 9 spiral str
 
 ## ✨ Features
 
-### 🎵 NEW: Synchronized Multi-Track Audio Control
-- **Real-time gesture-controlled audio mixing**
+### 🎵 NEW: Advanced Audio Control with Resume Playback
+- **Real-time gesture-controlled audio mixing** with intelligent pause/resume
 - **3 synchronized audio tracks** playing simultaneously
 - **Seamless track switching** with volume control
+- **Breakpoint resume playback** - continue from exact pause position
 - **No interruption** - maintain perfect timing when switching between tracks
 - **Multi-gesture support** - combine tracks for rich musical compositions
+- **Manual controls** - pause/resume and reset playback position
 
-| Audio Gesture | Track | Effect |
-|---------------|-------|---------|
-| ☝️ **1 Finger** → 🎻 **Violin** | Classical string melody |
-| ✌️ **2 Fingers** → 🎸 **Lute** | Renaissance plucked strings |
-| 🤟 **3 Fingers** → 🎹 **Organ** | Rich harmonic foundation |
-| ✋ **Open Hand** → 🎼 **Full Orchestra** | Complete ensemble playing |
-| 🤘 **Multiple gestures** → 🎼 **Custom Mix** | Layer selected instruments |
+| Audio Gesture | Track | Effect | Resume Behavior |
+|---------------|-------|---------|----------------|
+| ☝️ **1 Finger** → 🎻 **Violin** | Classical string melody | Continues from pause point |
+| ✌️ **2 Fingers** → 🎸 **Lute** | Renaissance plucked strings | Continues from pause point |
+| 🤟 **3 Fingers** → 🎹 **Organ** | Rich harmonic foundation | Continues from pause point |
+| ✋ **Open Hand** → 🎼 **Full Orchestra** | Complete ensemble playing | Continues from pause point |
+| 🤘 **Multiple gestures** → 🎼 **Custom Mix** | Layer selected instruments | Continues from pause point |
+| 🙅 **No gesture** → ⏸️ **Pause** | Audio paused at current position | Remembers exact timing |
 
 ### 🌀 9 Spiral Structures
 - **DNA Double Helix** - Classic biological structure with connecting bridges
@@ -101,14 +104,33 @@ For the full audio experience, place MP3 files in the project directory:
 
 **Note**: The application will work without audio files, just without sound.
 
+### 🎵 Breakpoint Resume Playback
+
+The advanced audio system now supports **intelligent pause and resume**:
+
+- **Automatic Pause**: When no hand gestures are detected, audio automatically pauses at the current position
+- **Seamless Resume**: When gestures return, audio continues from the exact pause point - no restart from beginning
+- **Position Memory**: The system remembers playback position even during long pauses
+- **Manual Control**: Use the **P key** to manually pause/resume audio independent of gestures
+- **Reset Function**: Use the **R key** to reset audio position back to the beginning
+- **Real-time Display**: Current playback position and status shown in camera window info panel
+
+**Example Workflow**:
+1. Show gesture (e.g., 1 finger) → 🎵 Violin starts playing
+2. Hide hand → ⏸️ Audio pauses at current position (e.g., 15.3 seconds)
+3. Wait 10 seconds (audio stays paused)
+4. Show different gesture (e.g., 2 fingers) → ▶️ Lute resumes from 15.3 seconds
+5. Continue seamless musical experience without interruption
+
 ## 🎯 Usage
 
 ### Basic Controls
 - **Mouse**: Drag to rotate 3D view
-- **R**: Reset camera view
+- **R**: Reset camera view and audio position to start
 - **S**: Manually cycle through shapes
 - **C**: Toggle camera window
 - **M**: Toggle audio control on/off
+- **P**: Manually pause/resume audio playback
 - **I**: Toggle info display
 - **W**: Toggle wireframe display
 - **1-5**: Adjust particle count
@@ -125,12 +147,14 @@ For the full audio experience, place MP3 files in the project directory:
 
 ```
 ├── main_app.py                 # Main application entry point
+├── advanced_audio_manager.py   # Advanced audio system with resume playback
 ├── gesture_detector.py         # MediaPipe hand tracking
 ├── render_engine.py            # OpenGL 3D rendering
 ├── particle_sphere_system.py   # Particle and helix systems
 ├── run.py                      # Smart launcher with dependency checks
 ├── test_shapes.py              # Shape testing utilities
 ├── test_gesture.py             # Gesture accuracy testing
+├── test_resume_playback.py     # Breakpoint resume testing
 ├── requirements.txt            # Python dependencies
 └── docs/                       # Documentation
     ├── PYTHON_README.md        # Detailed technical docs
@@ -148,6 +172,11 @@ python test_gesture.py
 ### Test All Shapes
 ```bash
 python run.py test
+```
+
+### Test Breakpoint Resume Playback
+```bash
+python test_resume_playback.py
 ```
 
 ### Performance Monitoring
@@ -183,6 +212,11 @@ python run.py test
 1. Add shape function to `particle_sphere_system.py`
 2. Update gesture mapping
 3. Test with `test_shapes.py`
+
+### Audio System Customization
+1. Replace MP3 files with your own audio tracks (keep same filenames)
+2. Adjust volume fade speed in `advanced_audio_manager.py`
+3. Modify gesture-to-track mapping in `main_app.py`
 
 ### Adjusting Parameters
 Edit parameters in `particle_sphere_system.py`:
