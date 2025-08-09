@@ -13,7 +13,7 @@ from gesture_detector import GestureDetector
 from render_engine import RenderEngine
 from particle_sphere_system import ParticleSphereSystem
 from hand_gesture_detector import HandGestureDetector
-from advanced_audio_manager import AdvancedAudioManager
+from simple_resume_audio_manager import SimpleResumeAudioManager
 
 class GestureParticleApp:
     def __init__(self):
@@ -32,8 +32,8 @@ class GestureParticleApp:
         except Exception as e:
             print(f"✗ Pygame音频初始化失败: {e}")
         
-        # 初始化高级音频管理器
-        self.audio_manager = AdvancedAudioManager()
+        # 初始化简化恢复播放管理器
+        self.audio_manager = SimpleResumeAudioManager()
         self.audio_enabled = self.audio_manager.initialize()
         
         # 最后初始化渲染引擎（可能会重新初始化pygame）
@@ -122,13 +122,14 @@ class GestureParticleApp:
             print("\n=== 应用启动成功！===")
             print("控制说明：")
             print("- 鼠标左键拖拽：旋转视角")
-            print("- R键：重置视角和音频位置")
-            print("- C键：切换摄像头窗口显示")
-            print("- W键：切换线框显示")
-            print("- I键：切换信息显示")
-            print("- S键：切换波浪形状")
-            print("- M键：切换音频开关")
-            print("- P键：手动暂停/继续音频播放")
+            print("- R key: Reset camera view and audio position")
+            print("- C key: Toggle camera window display")
+            print("- W key: Toggle wireframe display")
+            print("- I key: Toggle info display")
+            print("- S key: Cycle through wave shapes")
+            print("- M key: Toggle audio control on/off")
+            print("- P key: Manual pause/resume audio playback")
+            print("- T key: Toggle audio restart strategy")
             print("- ESC键：退出应用")
             print("- 数字键1-5：调整粒子数量")
             print("\n🧬 手势控制 → 螺旋结构：")
@@ -144,17 +145,18 @@ class GestureParticleApp:
             print("- 双手距离：控制螺旋数量和连接桥")
             
             if self.audio_enabled:
-                print("\n🎵 数字手势 → 断点续播音频控制：")
-                print("- 1️⃣ 食指 → 播放小提琴声部")
-                print("- 2️⃣ 食指+中指 → 播放鲁特琴声部") 
-                print("- 3️⃣ 食指+中指+无名指 → 播放管风琴声部")
-                print("- ✋ 张开手掌 → 播放所有声部（完整合奏）")
-                print("- 可同时做多个手势创造复杂音乐组合")
-                print("- 无手势时暂停播放，继续手势时从断点继续播放")
-                print("- P键：手动暂停/继续播放")
-                print("- R键：重置播放位置到开头\n")
+                print("\n🎵 Digital Gesture → Smart Resume Audio Control:")
+                print("- 1 finger → Play violin track")
+                print("- 2 fingers → Play lute track") 
+                print("- 3 fingers → Play organ track")
+                print("- Open hand → Play all tracks (full orchestra)")
+                print("- Multiple gestures → Create complex musical combinations")
+                print("- No gesture → Pause playback, remember position")
+                print("- P key: Manual pause/resume playback")
+                print("- R key: Reset playback position to beginning")
+                print("- T key: Toggle restart strategy (smart/beginning)\n")
             else:
-                print("\n⚠️ 音频功能未启用（音频文件缺失）\n")
+                print("\n⚠️ Audio functionality disabled (missing audio files)\n")
             
             # 主循环
             self.run_main_loop()
@@ -261,12 +263,22 @@ class GestureParticleApp:
             # 重置相机
             self.render_engine.camera_yaw = 0
             self.render_engine.camera_pitch = 0
-            print("视角已重置")
+            print("Camera view reset")
             
             # 重置音频位置
             if hasattr(self, 'audio_manager') and self.audio_manager.enabled:
                 self.audio_manager.reset_position()
-                print("音频位置已重置")
+                print("Audio position reset")
+        elif key == pygame.K_t:
+            # T键：切换音频重启策略
+            if hasattr(self, 'audio_manager') and self.audio_manager.enabled:
+                current_strategy = self.audio_manager.restart_from_beginning
+                new_strategy = not current_strategy
+                self.audio_manager.set_restart_strategy(new_strategy)
+                strategy_name = "Restart from beginning" if new_strategy else "Smart resume"
+                print(f"Audio strategy: {strategy_name}")
+            else:
+                print("Audio system not initialized")
         elif key == pygame.K_s:
             # 手动切换波浪形状
             new_shape = self.particle_sphere_system.particle_system.cycle_shape_mode()
@@ -447,7 +459,7 @@ class GestureParticleApp:
             # 显示播放状态（断点续播模式）
             audio_status = []
             if audio_status_info['enabled']:
-                playing_status = "▶️" if audio_status_info['master_playing'] else "⏸️"
+                playing_status = "PLAY" if audio_status_info['master_playing'] else "PAUSE"
                 audio_status.append(f"Status: {playing_status}")
                 
                 # 显示播放位置
@@ -457,7 +469,7 @@ class GestureParticleApp:
                 # 显示各音轨状态
                 for track_id, volume in audio_status_info['volumes'].items():
                     audible = volume > 0.1
-                    status = "🔊" if audible else "🔇"
+                    status = "ON" if audible else "OFF"
                     audio_status.append(f"T{track_id}:{status}({volume:.1f})")
             else:
                 audio_status.append("No audio manager")
@@ -473,9 +485,16 @@ class GestureParticleApp:
         
         for i, line in enumerate(info_lines):
             # 音频信息用不同颜色
-            color = (0, 255, 255) if "Audio" in line or "T1:" in line or "T2:" in line or "T3:" in line or "Digits:" in line else (0, 255, 0)
-            cv2.putText(frame, line, (w - 270, 35 + i * 20), 
-                       cv2.FONT_HERSHEY_SIMPLEX, 0.5, color, 1)
+            try:
+                # 确保使用ASCII字符
+                safe_line = line.encode('ascii', 'ignore').decode('ascii')
+                color = (0, 255, 255) if "Audio" in safe_line or "T1:" in safe_line or "T2:" in safe_line or "T3:" in safe_line or "Digits:" in safe_line else (0, 255, 0)
+                cv2.putText(frame, safe_line, (w - 270, 35 + i * 20), 
+                           cv2.FONT_HERSHEY_SIMPLEX, 0.5, color, 1)
+            except Exception as e:
+                # 如果出现编码错误，显示简化信息
+                cv2.putText(frame, f"Line {i}: [encoding error]", (w - 270, 35 + i * 20), 
+                           cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 0, 0), 1)
     
     def update_fps(self):
         """更新FPS计数"""

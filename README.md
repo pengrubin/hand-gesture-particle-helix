@@ -104,23 +104,28 @@ For the full audio experience, place MP3 files in the project directory:
 
 **Note**: The application will work without audio files, just without sound.
 
-### 🎵 Breakpoint Resume Playback
+### 🎵 Smart Resume Playback System
 
-The advanced audio system now supports **intelligent pause and resume**:
+The audio system uses **intelligent resume strategies** to provide the best user experience:
 
-- **Automatic Pause**: When no hand gestures are detected, audio automatically pauses at the current position
-- **Seamless Resume**: When gestures return, audio continues from the exact pause point - no restart from beginning
-- **Position Memory**: The system remembers playback position even during long pauses
-- **Manual Control**: Use the **P key** to manually pause/resume audio independent of gestures
-- **Reset Function**: Use the **R key** to reset audio position back to the beginning
-- **Real-time Display**: Current playback position and status shown in camera window info panel
+- **Virtual Position Tracking**: System tracks playback time virtually for smooth experience
+- **Smart Resume Strategy**: Automatically chooses between resuming or restarting based on pause duration
+- **Automatic Pause**: Audio pauses when no gestures are detected
+- **Manual Controls**: 
+  - **P key**: Manual pause/resume independent of gestures
+  - **R key**: Reset audio position to beginning
+  - **T key**: Toggle between "smart resume" and "always restart" strategies
+- **Real-time Display**: Current virtual position and status in camera info panel
+- **Clean Interface**: Reduced debug output and emoji-free text for better compatibility
 
-**Example Workflow**:
-1. Show gesture (e.g., 1 finger) → 🎵 Violin starts playing
-2. Hide hand → ⏸️ Audio pauses at current position (e.g., 15.3 seconds)
-3. Wait 10 seconds (audio stays paused)
-4. Show different gesture (e.g., 2 fingers) → ▶️ Lute resumes from 15.3 seconds
-5. Continue seamless musical experience without interruption
+**How It Works**:
+1. Show gesture → Audio starts playing with volume control
+2. Hide hand → Audio pauses, virtual position remembered
+3. Short pause (<10s) → Smart resume from virtual position
+4. Long pause (>10s) → Fresh start from beginning (user configurable)
+5. **T key** switches between strategies for user preference
+
+**Note**: Due to pygame limitations, true position-accurate resume isn't possible, but the smart strategy provides an excellent user experience with minimal interruption.
 
 ## 🎯 Usage
 
@@ -131,6 +136,7 @@ The advanced audio system now supports **intelligent pause and resume**:
 - **C**: Toggle camera window
 - **M**: Toggle audio control on/off
 - **P**: Manually pause/resume audio playback
+- **T**: Toggle audio restart strategy (smart/beginning)
 - **I**: Toggle info display
 - **W**: Toggle wireframe display
 - **1-5**: Adjust particle count
@@ -146,20 +152,20 @@ The advanced audio system now supports **intelligent pause and resume**:
 ## 🏗️ Project Structure
 
 ```
-├── main_app.py                 # Main application entry point
-├── advanced_audio_manager.py   # Advanced audio system with resume playback
-├── gesture_detector.py         # MediaPipe hand tracking
-├── render_engine.py            # OpenGL 3D rendering
-├── particle_sphere_system.py   # Particle and helix systems
-├── run.py                      # Smart launcher with dependency checks
-├── test_shapes.py              # Shape testing utilities
-├── test_gesture.py             # Gesture accuracy testing
-├── test_resume_playback.py     # Breakpoint resume testing
-├── requirements.txt            # Python dependencies
-└── docs/                       # Documentation
-    ├── PYTHON_README.md        # Detailed technical docs
-    ├── CHANGELOG.md            # Version history
-    └── BUGFIX_SUMMARY.md       # Recent fixes
+├── main_app.py                    # Main application entry point
+├── simple_resume_audio_manager.py # Smart resume audio system
+├── gesture_detector.py            # MediaPipe hand tracking
+├── render_engine.py               # OpenGL 3D rendering
+├── particle_sphere_system.py      # Particle and helix systems
+├── run.py                         # Smart launcher with dependency checks
+├── test_shapes.py                 # Shape testing utilities
+├── test_gesture.py                # Gesture accuracy testing
+├── test_simple_audio.py           # Audio system testing
+├── requirements.txt               # Python dependencies
+└── docs/                          # Documentation
+    ├── PYTHON_README.md           # Detailed technical docs
+    ├── CHANGELOG.md               # Version history
+    └── BUGFIX_SUMMARY.md          # Recent fixes
 ```
 
 ## 🧪 Testing & Debugging
@@ -174,9 +180,9 @@ python test_gesture.py
 python run.py test
 ```
 
-### Test Breakpoint Resume Playback
+### Test Smart Audio System
 ```bash
-python test_resume_playback.py
+python test_simple_audio.py
 ```
 
 ### Performance Monitoring
