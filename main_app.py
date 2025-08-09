@@ -13,7 +13,7 @@ from gesture_detector import GestureDetector
 from render_engine import RenderEngine
 from particle_sphere_system import ParticleSphereSystem
 from hand_gesture_detector import HandGestureDetector
-from simple_resume_audio_manager import SimpleResumeAudioManager
+from realistic_audio_manager import RealisticAudioManager
 
 class GestureParticleApp:
     def __init__(self):
@@ -32,8 +32,8 @@ class GestureParticleApp:
         except Exception as e:
             print(f"✗ Pygame音频初始化失败: {e}")
         
-        # 初始化简化恢复播放管理器
-        self.audio_manager = SimpleResumeAudioManager()
+        # 初始化现实主义音频管理器
+        self.audio_manager = RealisticAudioManager()
         self.audio_enabled = self.audio_manager.initialize()
         
         # 最后初始化渲染引擎（可能会重新初始化pygame）
@@ -145,16 +145,16 @@ class GestureParticleApp:
             print("- 双手距离：控制螺旋数量和连接桥")
             
             if self.audio_enabled:
-                print("\n🎵 Digital Gesture → Smart Resume Audio Control:")
-                print("- 1 finger → Play violin track")
-                print("- 2 fingers → Play lute track") 
-                print("- 3 fingers → Play organ track")
-                print("- Open hand → Play all tracks (full orchestra)")
-                print("- Multiple gestures → Create complex musical combinations")
-                print("- No gesture → Pause playback, remember position")
-                print("- P key: Manual pause/resume playback")
-                print("- R key: Reset playback position to beginning")
-                print("- T key: Toggle restart strategy (smart/beginning)\n")
+                print("\n🎵 Realistic Continuous Audio Control:")
+                print("- Audio plays continuously in background")
+                print("- 1 finger → Hear violin track")
+                print("- 2 fingers → Hear lute track") 
+                print("- 3 fingers → Hear organ track")
+                print("- Open hand → Hear all tracks (full orchestra)")
+                print("- No gesture → All tracks muted (still playing)")
+                print("- P key: Manual pause/resume entire playback")
+                print("- R key: Restart from beginning")
+                print("- T key: Toggle long-pause restart behavior\n")
             else:
                 print("\n⚠️ Audio functionality disabled (missing audio files)\n")
             
@@ -249,15 +249,9 @@ class GestureParticleApp:
         elif key == pygame.K_p:
             # P键：手动暂停/继续音频
             if hasattr(self, 'audio_manager') and self.audio_manager.enabled:
-                if self.audio_manager.master_playing:
-                    self.audio_manager.pause_playback()
-                    print("⏸️ 手动暂停音频")
-                else:
-                    # 从当前位置继续播放
-                    self.audio_manager.start_playback_from_position()
-                    print("▶️ 从断点继续播放")
+                self.audio_manager.manual_pause_resume()
             else:
-                print("音频系统未初始化")
+                print("Audio system not initialized")
         elif key == pygame.K_r:
             # R键：重置摄像头视角和音频位置
             # 重置相机
