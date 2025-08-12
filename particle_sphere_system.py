@@ -505,8 +505,8 @@ class ParticleSystem:
         else:
             return v, p, q
     
-    def update_params(self, gesture_data):
-        """根据手势数据更新参数"""
+    def update_params(self, gesture_data, audio_data=None):
+        """根据手势数据和音频数据更新参数"""
         if not gesture_data:
             return
         
@@ -514,6 +514,11 @@ class ParticleSystem:
         left_hand = gesture_data.get('left_hand', {})
         right_hand = gesture_data.get('right_hand', {})
         gesture_strength = gesture_data.get('gesture_strength', 0.0)
+        
+        # 音频强度控制粒子大小
+        audio_size_factor = 1.0
+        if audio_data:
+            audio_size_factor = 0.3 + audio_data.get('pitch_intensity', 0.0) * 1.4  # 0.3-1.7范围
         
         # 发射速率：基于检测到的手数
         base_rate = 80
@@ -556,10 +561,16 @@ class ParticleSystem:
         self.params['wave_speed'] = 0.5 + gesture_strength * 2.0
         self.params['line_length'] = 4.0 + gesture_strength * 4.0
         
-        # 粒子大小：基于左手张开程度
+        # 粒子大小：现在由音频强度主导，手部开放度辅助
+        base_size = audio_size_factor  # 使用音频作为主要大小控制
+        
         if left_hand.get('detected', False):
             openness = left_hand.get('openness', 0)
-            self.params['size_scale'] = max(0.2, openness * 2.5)
+            # 手部开放度作为修正因子，而非主要因子
+            hand_modifier = 0.7 + openness * 0.6  # 0.7-1.3范围
+            self.params['size_scale'] = max(0.2, base_size * hand_modifier)
+        else:
+            self.params['size_scale'] = max(0.2, base_size)
         
         # 双手控制特殊效果
         if hands_count == 2 and left_hand.get('detected') and right_hand.get('detected'):
@@ -662,8 +673,8 @@ class HelixRenderer:
         )
         current_radius = radius * pulsation
         
-        # 生成每条螺旋线
-        points_per_helix = 100
+        # 生成每条螺旋线 - 增加密度使旋转更明显
+        points_per_helix = 200
         for helix_id in range(helix_count):
             phase_offset = helix_id * 2 * math.pi / helix_count
             
@@ -673,19 +684,46 @@ class HelixRenderer:
                 # 高度
                 z = (t - 0.5) * height
                 
-                # 角度
-                angle = t * twist_rate * 2 * math.pi + phase_offset + self.current_time * 0.5
+                # 螺旋的基本角度（内在的螺旋结构）
+                intrinsic_angle = t * twist_rate * 2 * math.pi + phase_offset
                 
-                # 位置
-                x = current_radius * math.cos(angle)
-                y = current_radius * math.sin(angle)
+                # 添加少量动态旋转效果
+                dynamic_rotation = self.current_time * 0.3
+                base_angle = intrinsic_angle + dynamic_rotation
                 
-                points.extend([x, y, z])
+                # 生成基础螺旋点（本地坐标系）
+                x_local = current_radius * math.cos(base_angle)
+                y_local = current_radius * math.sin(base_angle)
+                z_local = z
                 
-                # 颜色：基于螺旋ID和高度
+                # 应用3D旋转矩阵变换（真正的3D空间旋转）
+                rotation_matrix = self.params.get('palm_rotation_matrix', [[1, 0, 0], [0, 1, 0], [0, 0, 1]])
+                
+                # 矩阵乘法：[x, y, z] = rotation_matrix * [x_local, y_local, z_local]
+                x = (rotation_matrix[0][0] * x_local + 
+                     rotation_matrix[0][1] * y_local + 
+                     rotation_matrix[0][2] * z_local)
+                
+                y = (rotation_matrix[1][0] * x_local + 
+                     rotation_matrix[1][1] * y_local + 
+                     rotation_matrix[1][2] * z_local)
+                
+                z_final = (rotation_matrix[2][0] * x_local + 
+                           rotation_matrix[2][1] * y_local + 
+                           rotation_matrix[2][2] * z_local)
+                
+                points.extend([x, y, z_final])
+                
+                # 颜色：基于螺旋ID和高度，增强对比度
                 hue = (helix_id / helix_count + t * 0.3 + self.current_time * 0.1) % 1.0
-                r, g, b = self.hsv_to_rgb(hue, 0.8, 0.9)
-                colors.extend([r, g, b, 0.8])
+                
+                # 在特定位置添加高亮标记点，便于观察旋转
+                if i % 20 == 0:  # 每20个点添加一个高亮标记
+                    r, g, b = 1.0, 1.0, 0.0  # 黄色高亮标记
+                    colors.extend([r, g, b, 1.0])
+                else:
+                    r, g, b = self.hsv_to_rgb(hue, 0.8, 0.9)
+                    colors.extend([r, g, b, 0.8])
         
         # 生成连接桥
         if self.params['connecting_bridges'] and helix_count >= 2:
@@ -713,13 +751,38 @@ class HelixRenderer:
             z = (t - 0.5) * height
             angle = t * twist_rate * 2 * math.pi + self.current_time * 0.5
             
-            # 第一条螺旋的点
-            x1 = radius * math.cos(angle)
-            y1 = radius * math.sin(angle)
+            # 第一条螺旋的点（本地坐标）
+            x1_local = radius * math.cos(angle)
+            y1_local = radius * math.sin(angle)
             
-            # 第二条螺旋的点
-            x2 = radius * math.cos(angle + math.pi)
-            y2 = radius * math.sin(angle + math.pi)
+            # 第二条螺旋的点（本地坐标）
+            x2_local = radius * math.cos(angle + math.pi)
+            y2_local = radius * math.sin(angle + math.pi)
+            
+            # 应用3D旋转矩阵变换
+            rotation_matrix = self.params.get('palm_rotation_matrix', [[1, 0, 0], [0, 1, 0], [0, 0, 1]])
+            
+            # 变换第一条螺旋的点
+            x1 = (rotation_matrix[0][0] * x1_local + 
+                  rotation_matrix[0][1] * y1_local + 
+                  rotation_matrix[0][2] * z)
+            y1 = (rotation_matrix[1][0] * x1_local + 
+                  rotation_matrix[1][1] * y1_local + 
+                  rotation_matrix[1][2] * z)
+            z1 = (rotation_matrix[2][0] * x1_local + 
+                  rotation_matrix[2][1] * y1_local + 
+                  rotation_matrix[2][2] * z)
+            
+            # 变换第二条螺旋的点
+            x2 = (rotation_matrix[0][0] * x2_local + 
+                  rotation_matrix[0][1] * y2_local + 
+                  rotation_matrix[0][2] * z)
+            y2 = (rotation_matrix[1][0] * x2_local + 
+                  rotation_matrix[1][1] * y2_local + 
+                  rotation_matrix[1][2] * z)
+            z2 = (rotation_matrix[2][0] * x2_local + 
+                  rotation_matrix[2][1] * y2_local + 
+                  rotation_matrix[2][2] * z)
             
             # 连接桥上的点
             bridge_points = 5
@@ -728,8 +791,9 @@ class HelixRenderer:
                 
                 x = x1 + bridge_t * (x2 - x1)
                 y = y1 + bridge_t * (y2 - y1)
+                z_bridge = z1 + bridge_t * (z2 - z1)  # 使用变换后的z坐标
                 
-                positions.extend([x, y, z])
+                positions.extend([x, y, z_bridge])
                 
                 # 连接桥颜色
                 hue = (0.3 + t * 0.2 + self.current_time * 0.05) % 1.0
@@ -789,8 +853,8 @@ class HelixRenderer:
         else:
             return v, p, q
 
-    def update_params(self, gesture_data):
-        """根据手势数据更新螺旋参数"""
+    def update_params(self, gesture_data, audio_data=None):
+        """根据手势数据和音频数据更新螺旋参数"""
         if not gesture_data:
             return
         
@@ -799,8 +863,18 @@ class HelixRenderer:
         right_hand = gesture_data.get('right_hand', {})
         gesture_strength = gesture_data.get('gesture_strength', 0.0)
         
-        # 基础半径：手势强度控制
-        self.params['base_radius'] = 1.2 + gesture_strength * 1.8
+        # 手掌3D旋转控制
+        palm_rotation = gesture_data.get('combined_rotation', 0.0)
+        palm_rotation_matrix = gesture_data.get('combined_rotation_matrix', [[1, 0, 0], [0, 1, 0], [0, 0, 1]])
+        
+        # 音频控制数据
+        audio_scale = 1.0  # 默认缩放
+        if audio_data:
+            # 使用音高强度控制大小，而不是手势强度
+            audio_scale = 0.5 + audio_data.get('pitch_intensity', 0.0) * 1.5  # 0.5-2.0范围
+        
+        # 基础半径：现在由音频控制而非手势强度
+        self.params['base_radius'] = (1.2 + gesture_strength * 0.5) * audio_scale  # 音频主导的大小控制
         
         # 螺旋高度：双手距离控制
         if hands_count == 2 and left_hand.get('detected') and right_hand.get('detected'):
@@ -835,12 +909,22 @@ class HelixRenderer:
         
         self.params['twist_rate'] = twist_map.get(main_gesture, 2.0)
         
-        # 旋转速度：基于手势强度
-        base_speed = 0.3 + gesture_strength * 1.2
+        # 手掌旋转直接控制螺旋结构的绝对朝向（坐标系控制）
+        # 将手掌旋转角度转换为螺旋结构的绝对旋转角度
+        palm_rotation_degrees = palm_rotation * 180 / math.pi  # 弧度转度
+        
+        # 基础旋转（缓慢自转）
+        base_rotation_speed = 0.5 + gesture_strength * 0.3
+        
+        # 设置螺旋结构的3D旋转矩阵
+        self.params['palm_rotation_matrix'] = palm_rotation_matrix  # 新增：3D旋转矩阵
+        self.params['palm_absolute_rotation'] = palm_rotation_degrees  # 保留兼容性
+        
+        # 保持少量自转以显示动态效果
         self.params['rotation_speed'] = [
-            base_speed * 0.8,
-            base_speed * 1.0,
-            base_speed * 0.6
+            base_rotation_speed,  # X轴：缓慢自转
+            base_rotation_speed,  # Y轴：缓慢自转
+            base_rotation_speed   # Z轴：缓慢自转
         ]
         
         # 脉动：基于手势强度
@@ -885,14 +969,14 @@ class ParticleSphereSystem:
         self.helix_renderer = HelixRenderer()  # 替换为螺旋渲染器
         self.current_time = 0.0
     
-    def update(self, dt, gesture_data=None):
+    def update(self, dt, gesture_data=None, audio_data=None):
         """更新整个系统"""
         self.current_time += dt
         
-        # 更新参数
+        # 更新参数（传入音频数据）
         if gesture_data:
-            self.particle_system.update_params(gesture_data)
-            self.helix_renderer.update_params(gesture_data)
+            self.particle_system.update_params(gesture_data, audio_data)
+            self.helix_renderer.update_params(gesture_data, audio_data)
         
         # 更新系统
         self.particle_system.update(dt)

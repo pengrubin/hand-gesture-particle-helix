@@ -25,10 +25,30 @@ class GestureDetector:
         # 手势数据
         self.gesture_data = {
             'hands_detected': 0,
-            'left_hand': {'detected': False, 'landmarks': [], 'gesture': 'none', 'openness': 0.0, 'center': [0.5, 0.5]},
-            'right_hand': {'detected': False, 'landmarks': [], 'gesture': 'none', 'openness': 0.0, 'center': [0.5, 0.5]},
+            'left_hand': {
+                'detected': False, 
+                'landmarks': [], 
+                'gesture': 'none', 
+                'openness': 0.0, 
+                'center': [0.5, 0.5],
+                'rotation_angle': 0.0,  # 手掌旋转角度（弧度）
+                'palm_direction': [0.0, 1.0],  # 手掌朝向向量
+                'rotation_matrix': [[1, 0, 0], [0, 1, 0], [0, 0, 1]]  # 3D旋转矩阵
+            },
+            'right_hand': {
+                'detected': False, 
+                'landmarks': [], 
+                'gesture': 'none', 
+                'openness': 0.0, 
+                'center': [0.5, 0.5],
+                'rotation_angle': 0.0,
+                'palm_direction': [0.0, 1.0],
+                'rotation_matrix': [[1, 0, 0], [0, 1, 0], [0, 0, 1]]  # 3D旋转矩阵
+            },
             'gesture_strength': 0.0,
-            'timestamp': 0.0
+            'timestamp': 0.0,
+            'combined_rotation': 0.0,  # 综合旋转角度
+            'combined_rotation_matrix': [[1, 0, 0], [0, 1, 0], [0, 0, 1]]  # 综合3D旋转矩阵
         }
         
         # 相机设置
@@ -111,6 +131,7 @@ class GestureDetector:
                 gesture_type = self.detect_gesture_type(landmarks)
                 openness = self.calculate_hand_openness(landmarks)
                 center = self.calculate_hand_center(landmarks)
+                rotation_angle, palm_direction, rotation_matrix = self.calculate_palm_rotation(landmarks)
                 
                 # 存储数据
                 hand_data = {
@@ -118,7 +139,10 @@ class GestureDetector:
                     'landmarks': landmarks,
                     'gesture': gesture_type,
                     'openness': openness,
-                    'center': center
+                    'center': center,
+                    'rotation_angle': rotation_angle,
+                    'palm_direction': palm_direction,
+                    'rotation_matrix': rotation_matrix  # 新增：3D旋转矩阵
                 }
                 
                 if hand_label == 'left':
@@ -133,10 +157,13 @@ class GestureDetector:
                     self.mp_drawing.DrawingSpec(color=(0, 255, 0), thickness=2)
                 )
         
-        # 计算综合手势强度
+        # 计算综合手势强度和旋转角度
         left_strength = self.gesture_data['left_hand']['openness'] if self.gesture_data['left_hand']['detected'] else 0
         right_strength = self.gesture_data['right_hand']['openness'] if self.gesture_data['right_hand']['detected'] else 0
         self.gesture_data['gesture_strength'] = max(left_strength, right_strength)
+        
+        # 计算综合旋转角度和矩阵
+        self.gesture_data['combined_rotation'], self.gesture_data['combined_rotation_matrix'] = self.calculate_combined_rotation()
         
         # 添加文本信息
         self.draw_info_on_frame(frame)
@@ -262,6 +289,99 @@ class GestureDetector:
         center_y = sum(y_coords) / len(y_coords)
         
         return [center_x, center_y]
+    
+    def calculate_palm_rotation(self, landmarks):
+        """计算手掌的3D旋转矩阵"""
+        if not landmarks or len(landmarks) < 21:
+            identity_matrix = [[1, 0, 0], [0, 1, 0], [0, 0, 1]]
+            return 0.0, [1.0, 0.0], identity_matrix
+        
+        try:
+            # 使用MediaPipe的3D坐标信息计算完整的手掌姿态
+            wrist = landmarks[0]        # 手腕
+            index_mcp = landmarks[5]    # 食指根部  
+            middle_mcp = landmarks[9]   # 中指根部
+            pinky_mcp = landmarks[17]   # 小指根部
+            
+            # 构建手掌坐标系的三个轴
+            # X轴：从食指指向小指（手掌宽度方向）
+            x_axis = [pinky_mcp[0] - index_mcp[0], 
+                      pinky_mcp[1] - index_mcp[1], 
+                      pinky_mcp[2] - index_mcp[2]]
+            
+            # Y轴：从手腕指向中指（手掌长度方向）  
+            y_axis = [middle_mcp[0] - wrist[0], 
+                      middle_mcp[1] - wrist[1], 
+                      middle_mcp[2] - wrist[2]]
+            
+            # 正规化向量
+            def normalize(v):
+                length = math.sqrt(v[0]**2 + v[1]**2 + v[2]**2)
+                return [v[0]/length, v[1]/length, v[2]/length] if length > 0.0001 else [0, 0, 1]
+            
+            x_axis = normalize(x_axis)
+            y_axis = normalize(y_axis)
+            
+            # Z轴：通过叉积计算（手掌法向量）
+            z_axis = [
+                x_axis[1] * y_axis[2] - x_axis[2] * y_axis[1],
+                x_axis[2] * y_axis[0] - x_axis[0] * y_axis[2], 
+                x_axis[0] * y_axis[1] - x_axis[1] * y_axis[0]
+            ]
+            z_axis = normalize(z_axis)
+            
+            # 重新正交化Y轴以确保坐标系正交
+            y_axis = [
+                z_axis[1] * x_axis[2] - z_axis[2] * x_axis[1],
+                z_axis[2] * x_axis[0] - z_axis[0] * x_axis[2],
+                z_axis[0] * x_axis[1] - z_axis[1] * x_axis[0]
+            ]
+            y_axis = normalize(y_axis)
+            
+            # 构建3D旋转矩阵
+            rotation_matrix = [
+                [x_axis[0], y_axis[0], z_axis[0]],
+                [x_axis[1], y_axis[1], z_axis[1]], 
+                [x_axis[2], y_axis[2], z_axis[2]]
+            ]
+            
+            # 为了兼容性，仍然返回一个角度值（Z轴旋转的近似）
+            angle = math.atan2(x_axis[1], x_axis[0])
+            
+            return angle, x_axis, rotation_matrix
+            
+        except (IndexError, ZeroDivisionError, ValueError):
+            # 返回单位矩阵
+            identity_matrix = [[1, 0, 0], [0, 1, 0], [0, 0, 1]]
+            return 0.0, [1.0, 0.0], identity_matrix
+    
+    def calculate_combined_rotation(self):
+        """计算综合旋转角度和3D旋转矩阵"""
+        left_detected = self.gesture_data['left_hand']['detected']
+        right_detected = self.gesture_data['right_hand']['detected']
+        
+        identity_matrix = [[1, 0, 0], [0, 1, 0], [0, 0, 1]]
+        
+        if left_detected and right_detected:
+            # 双手都检测到：使用主手（右手优先）的旋转矩阵
+            # 也可以计算两个矩阵的平均，但这更复杂
+            primary_matrix = self.gesture_data['right_hand']['rotation_matrix']
+            primary_angle = self.gesture_data['right_hand']['rotation_angle']
+            
+            return primary_angle, primary_matrix
+            
+        elif left_detected:
+            left_angle = self.gesture_data['left_hand']['rotation_angle']
+            left_matrix = self.gesture_data['left_hand']['rotation_matrix']
+            return left_angle, left_matrix
+            
+        elif right_detected:
+            right_angle = self.gesture_data['right_hand']['rotation_angle']
+            right_matrix = self.gesture_data['right_hand']['rotation_matrix']
+            return right_angle, right_matrix
+            
+        else:
+            return 0.0, identity_matrix
     
     def draw_info_on_frame(self, frame):
         """在帧上绘制信息"""

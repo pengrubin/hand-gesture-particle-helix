@@ -14,6 +14,7 @@ from render_engine import RenderEngine
 from particle_sphere_system import ParticleSphereSystem
 from hand_gesture_detector import HandGestureDetector
 from realistic_audio_manager import RealisticAudioManager
+from audio_spectrum_analyzer import AudioSpectrumAnalyzer
 
 class GestureParticleApp:
     def __init__(self):
@@ -36,9 +37,22 @@ class GestureParticleApp:
         self.audio_manager = RealisticAudioManager()
         self.audio_enabled = self.audio_manager.initialize()
         
+        # 初始化音频频谱分析器
+        self.spectrum_analyzer = AudioSpectrumAnalyzer()
+        self.spectrum_enabled = self.spectrum_analyzer.initialize()
+        
+        # 连接音频管理器到频谱分析器
+        self.spectrum_analyzer.set_audio_manager(self.audio_manager)
+        
+        if self.spectrum_enabled:
+            self.spectrum_analyzer.start_analysis()
+            print("✓ 音频频谱分析器启动（音轨分析模式）")
+        else:
+            print("⚠️ 音频频谱分析器使用模拟模式（音轨分析模式）")
+        
         # 最后初始化渲染引擎（可能会重新初始化pygame）
         print("初始化渲染引擎...")
-        self.render_engine = RenderEngine(width=1400, height=900, title="手势控制粒子球形效果 + 音频")
+        self.render_engine = RenderEngine(width=1400, height=900, title="手势+音频控制粒子螺旋效果")
         self.particle_sphere_system = ParticleSphereSystem(max_particles=1500)
         
         # 运行状态
@@ -140,9 +154,14 @@ class GestureParticleApp:
             print("- 4个手指 → 编织螺旋线")
             print("- 张开手掌 → 银河螺旋")
             print("- 双手 → 多重螺旋塔")
-            print("- 手势强度：控制螺旋半径和高度") 
+            print("- 手掌3D姿态：螺旋结构在3D空间中跟随手掌旋转（上下/左右倾斜+平面旋转）") 
             print("- 手部位置：控制颜色和扭转速度")
             print("- 双手距离：控制螺旋数量和连接桥")
+            
+            print("\n🎶 音频频谱控制：")
+            print("- 音乐音高强度：控制粒子大小变化")
+            print("- 实时频谱分析：显示音符和音高信息")
+            print("- 音频强度映射：动态调整粒子缩放效果")
             
             if self.audio_enabled:
                 print("\n🎵 Realistic Continuous Audio Control:")
@@ -186,8 +205,13 @@ class GestureParticleApp:
                 digit_gestures = self.convert_gesture_to_digits(gesture_data)
                 self.update_audio_from_gestures(digit_gestures)
             
-            # 更新粒子球形系统
-            self.particle_sphere_system.update(dt, gesture_data)
+            # 获取音频频谱数据
+            audio_data = None
+            if hasattr(self, 'spectrum_analyzer') and self.spectrum_enabled:
+                audio_data = self.spectrum_analyzer.get_status_info()
+            
+            # 更新粒子球形系统（传入音频数据）
+            self.particle_sphere_system.update(dt, gesture_data, audio_data)
             
             # 渲染3D场景
             self.render_3d_scene()
@@ -333,20 +357,20 @@ class GestureParticleApp:
                 particle_data['colors'] = colors[:display_count * 4] if colors else None
                 particle_data['sizes'] = sizes[:display_count] if sizes else None
         
-        # 渲染粒子
-        self.render_engine.render_particles(
-            particle_data['positions'],
-            particle_data['colors'],
-            particle_data['sizes']
-        )
+        # 注释掉粒子渲染，只显示螺旋线
+        # self.render_engine.render_particles(
+        #     particle_data['positions'],
+        #     particle_data['colors'],
+        #     particle_data['sizes']
+        # )
         
-        # 渲染螺旋结构
+        # 只渲染螺旋结构（跟随手掌旋转）
         helix_points = self.particle_sphere_system.get_helix_points()
         if helix_points and helix_points['positions']:
             self.render_engine.render_particles(
                 helix_points['positions'],
                 helix_points['colors'],
-                None  # 螺旋点不需要大小变化
+                None  # 螺旋线不需要大小变化
             )
         
         # 注释掉参考球体，不需要显示
@@ -431,16 +455,44 @@ class GestureParticleApp:
             f"Shape: {shape_display}",
             f"Hands: {gesture_data.get('hands_detected', 0)}",
             f"Strength: {gesture_data.get('gesture_strength', 0):.2f}",
+            f"Palm Rotation: {gesture_data.get('combined_rotation', 0.0) * 180 / 3.14159:.1f}deg ({gesture_data.get('combined_rotation', 0.0):.2f}rad)",
         ]
         
         # 添加手势信息
         if gesture_data.get('left_hand', {}).get('detected', False):
             left = gesture_data['left_hand']
-            info_lines.append(f"L: {left['gesture']}")
+            rotation = left.get('rotation_angle', 0.0)
+            info_lines.append(f"L: {left['gesture']} ({rotation:.2f}rad)")
         
         if gesture_data.get('right_hand', {}).get('detected', False):
             right = gesture_data['right_hand']
-            info_lines.append(f"R: {right['gesture']}")
+            rotation = right.get('rotation_angle', 0.0)
+            info_lines.append(f"R: {right['gesture']} ({rotation:.2f}rad)")
+        
+        # 添加音频频谱信息（只显示正在播放的音轨）
+        if hasattr(self, 'spectrum_analyzer') and self.spectrum_enabled:
+            spectrum_info = self.spectrum_analyzer.get_status_info()
+            
+            # 获取激活的音轨
+            active_tracks = []
+            if hasattr(self, 'audio_manager') and hasattr(self.audio_manager, 'target_volumes'):
+                track_names = {1: "Violin", 2: "Lute", 3: "Organ"}
+                for track_id, volume in self.audio_manager.target_volumes.items():
+                    if volume > 0.1:
+                        active_tracks.append(f"{track_names.get(track_id, f'T{track_id}')}")
+            
+            info_lines.append("--- Playing Tracks ---")
+            if active_tracks:
+                info_lines.append(f"Active: {', '.join(active_tracks)}")
+                info_lines.append(f"Freq: {spectrum_info['dominant_freq']:.1f}Hz")
+                info_lines.append(f"Note: {spectrum_info['pitch_class']}{spectrum_info['octave']}")
+                info_lines.append(f"Intensity: {spectrum_info['pitch_intensity']:.2f}")
+            else:
+                info_lines.append("No tracks playing")
+                info_lines.append("Particle size: default")
+        else:
+            info_lines.append("--- Playing Tracks ---")
+            info_lines.append("Mock audio mode")
         
         # 添加音频信息
         if self.audio_enabled and hasattr(self, 'audio_manager'):
@@ -506,9 +558,13 @@ class GestureParticleApp:
         
         # 清理音频资源
         try:
+            if hasattr(self, 'spectrum_analyzer'):
+                self.spectrum_analyzer.cleanup()
+                print("✓ 音频频谱分析器已清理")
+                
             if hasattr(self, 'audio_manager'):
                 self.audio_manager.cleanup()
-                print("✓ 高级音频管理器已清理")
+                print("✓ 音频管理器已清理")
             
             pygame.mixer.quit()
             print("✓ 音频系统已清理")
