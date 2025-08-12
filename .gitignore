@@ -212,3 +212,15 @@ simple_*.py
 # Audio test files
 audio_test*
 sound_test*
+
+# MIDI visualization output folders (generated content)
+testfugue_visualizations_*/
+*_visualizations_*/
+
+# Keep MIDI files but exclude large visualization outputs
+*.png
+*.jpg
+*.jpeg
+# But keep MIDI source files
+!*.mid
+!*.midi
