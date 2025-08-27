@@ -9,7 +9,17 @@ import threading
 import time
 import numpy as np
 import os
-from gesture_detector import GestureDetector
+import platform
+import sys
+
+# 优先使用跨平台手势检测器，回退到原版检测器
+try:
+    from cross_platform_gesture_detector import CrossPlatformGestureDetector as GestureDetector
+    print("✓ 使用跨平台手势检测器")
+except ImportError:
+    from gesture_detector import GestureDetector
+    print("⚠️ 使用标准手势检测器（可能存在兼容性问题）")
+
 from render_engine import RenderEngine
 from particle_sphere_system import ParticleSphereSystem
 from hand_gesture_detector import HandGestureDetector
@@ -20,8 +30,29 @@ class GestureParticleApp:
     def __init__(self):
         print("正在初始化手势粒子音频应用...")
         
+        # 显示平台信息
+        system = platform.system()
+        machine = platform.machine()
+        python_version = f"{sys.version_info.major}.{sys.version_info.minor}.{sys.version_info.micro}"
+        
+        if system == "Darwin":
+            processor_type = "Apple Silicon" if machine == "arm64" else "Intel"
+        else:
+            processor_type = machine
+            
+        print(f"运行平台: {system} {processor_type}")
+        print(f"Python版本: {python_version}")
+        
         # 初始化各个系统（注意顺序很重要）
+        print("初始化跨平台手势检测器...")
         self.gesture_detector = GestureDetector()
+        
+        # 如果使用跨平台检测器，显示平台优化信息
+        if hasattr(self.gesture_detector, 'platform_info'):
+            platform_info = self.gesture_detector.platform_info
+            print(f"✓ 平台优化: {platform_info['processor_type']} ({platform_info['mediapipe_delegate']} 模式)")
+            if platform_info['processor_type'] == 'Intel' and platform_info['mediapipe_delegate'] == 'CPU':
+                print("  注意: Intel Mac 自动使用 CPU 优化模式以确保稳定性")
         # 注意：我们复用现有的手势检测器来控制音频，不需要单独的数字检测器
         
         # 初始化pygame音频系统（在RenderEngine之前）
@@ -127,8 +158,28 @@ class GestureParticleApp:
         try:
             # 启动摄像头
             print("启动摄像头...")
-            self.gesture_detector.start_camera(0)
-            print("✓ 摄像头启动成功")
+            try:
+                self.gesture_detector.start_camera(0)
+                print("✓ 摄像头启动成功")
+            except Exception as camera_error:
+                print(f"✗ 摄像头启动失败: {camera_error}")
+                
+                # 提供平台特定的解决建议
+                system = platform.system()
+                if system == "Darwin":  # macOS
+                    print("\n🔧 macOS 摄像头权限解决方案:")
+                    print("1. 系统偏好设置 > 安全性与隐私 > 隐私 > 相机")
+                    print("2. 确保 Terminal 或您的 Python IDE 有摄像头权限")
+                    print("3. 重新启动终端或 IDE")
+                    print("4. 确保没有其他应用正在使用摄像头")
+                elif system == "Windows":
+                    print("\n🔧 Windows 摄像头权限解决方案:")
+                    print("1. 设置 > 隐私 > 相机")
+                    print("2. 确保应用有摄像头权限")
+                    print("3. 检查设备管理器中的摄像头状态")
+                
+                print("\n继续运行应用（摄像头功能将不可用）...")
+                # 继续运行，但摄像头功能不可用
             
             # 等待摄像头稳定
             time.sleep(1.0)
