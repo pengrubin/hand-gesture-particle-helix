@@ -95,6 +95,10 @@ class EMajorAudioController:
         # 激活组跟踪（记忆哪些组已被激活）
         self.activated_groups: Set[str] = set()  # {'violin', 'clarinet', 'piano', 'drum', 'trumpet'}
 
+        # 持续检测机制
+        self.instrument_detection_start: Dict[str, float] = {}  # 记录每个乐器开始检测的时间戳
+        self.required_duration = 1.5  # 需要持续的秒数（所有乐器统一）
+
         # 断点续播：位置跟踪
         self.master_playing = False
         self.session_start_time: Optional[float] = None  # 播放会话开始时间
@@ -312,24 +316,55 @@ class EMajorAudioController:
             self._last_status_time = current_time
 
     def _update_instrument_volumes(self, detected_instruments: Dict[str, float]):
-        """根据检测结果更新乐器组音量"""
-        # 将新检测到的乐器加入激活组
-        if 'violin' in detected_instruments:
-            self.activated_groups.add('violin')
+        """
+        根据检测结果更新乐器组音量（添加持续时间检测机制）
 
-        if 'clarinet' in detected_instruments:
-            self.activated_groups.add('clarinet')
+        策略：每个乐器需要维持动作1.5秒后才激活
+        - 已激活的乐器不会再次处理
+        - 动作中断会清除持续计时
+        - 只有人离开后才会重置激活列表
+        """
+        current_time = time.time()
 
-        if 'piano' in detected_instruments:
-            self.activated_groups.add('piano')
+        # 步骤1: 对于当前检测到的乐器，检查持续时间
+        for instrument, confidence in detected_instruments.items():
+            if instrument in self.activated_groups:
+                # 已激活，跳过
+                continue
 
-        if 'drum' in detected_instruments:
-            self.activated_groups.add('drum')
+            # 首次检测到该乐器
+            if instrument not in self.instrument_detection_start:
+                self.instrument_detection_start[instrument] = current_time
+                print(f"⏱️  开始检测 {instrument}，需维持 {self.required_duration} 秒...")
+                continue
 
-        if 'trumpet' in detected_instruments:
-            self.activated_groups.add('trumpet')
+            # 检查持续时间
+            duration = current_time - self.instrument_detection_start[instrument]
+            if duration >= self.required_duration:
+                # 达到要求时间，激活！
+                self.activated_groups.add(instrument)
+                print(f"🎵 激活乐器组: {instrument} (持续 {duration:.1f} 秒)")
+                # 激活后从检测字典中移除
+                del self.instrument_detection_start[instrument]
+            else:
+                # 持续中，显示进度
+                print(f"⏱️  {instrument} 持续中... {duration:.1f}s / {self.required_duration}s")
 
-        # 应用基于激活组的音量
+        # 步骤2: 清除不再检测到的乐器（动作中断）
+        detected_set = set(detected_instruments.keys())
+        interrupted_instruments = []
+
+        for instrument in list(self.instrument_detection_start.keys()):
+            if instrument not in detected_set and instrument not in self.activated_groups:
+                duration = current_time - self.instrument_detection_start[instrument]
+                print(f"❌ {instrument} 动作中断 (仅持续 {duration:.1f}s)，需重新开始")
+                interrupted_instruments.append(instrument)
+
+        # 移除中断的乐器
+        for instrument in interrupted_instruments:
+            del self.instrument_detection_start[instrument]
+
+        # 步骤3: 应用基于激活组的音量
         self._apply_activated_volumes()
 
     def _apply_activated_volumes(self):
@@ -367,8 +402,10 @@ class EMajorAudioController:
         print(f"🔄 状态: {old_state.value} → {new_state.value}")
 
         if new_state == PlaybackState.NO_PERSON:
-            # 人消失 - 清除所有激活组
+            # 人消失 - 清除所有激活组和持续检测状态
             self.activated_groups.clear()
+            self.instrument_detection_start.clear()
+            print("[状态切换] 清除所有乐器激活状态和持续检测状态")
             self._pause_all_tracks()
 
         elif new_state == PlaybackState.PERSON_DETECTED:
@@ -473,6 +510,10 @@ class EMajorAudioController:
         self.total_pause_duration = 0.0
         self.current_pause_start = None
 
+        # 清除持续检测状态
+        self.instrument_detection_start.clear()
+        print("[重置] 清除所有乐器持续检测状态")
+
         # 停止所有当前播放
         for track_id in list(self.playing_tracks):
             try:
@@ -533,6 +574,9 @@ class EMajorAudioController:
 
         # 停止渐变线程
         self.fade_thread_running = False
+
+        # 清除持续检测状态
+        self.instrument_detection_start.clear()
 
         # 停止所有播放
         for track_id in list(self.playing_tracks):
