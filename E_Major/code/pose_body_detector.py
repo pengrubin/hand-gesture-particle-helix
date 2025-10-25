@@ -15,6 +15,7 @@ import mediapipe as mp
 import numpy as np
 import math
 import time
+import platform
 from collections import deque, defaultdict
 from typing import Dict, List, Optional, Tuple, Any
 import threading
