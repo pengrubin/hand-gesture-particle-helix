@@ -15,7 +15,6 @@ import mediapipe as mp
 import numpy as np
 import math
 import time
-import platform
 from collections import deque, defaultdict
 from typing import Dict, List, Optional, Tuple, Any
 import threading
@@ -236,12 +235,9 @@ class InstrumentGestureAnalyzer:
         # 记录右手位置历史
         right_hand_history.append((right_wrist_x, right_wrist_y, time.time()))
 
-        # 计算横向和垂直速度（至少需要2帧）
+        # 计算横向速度（至少需要2帧）
         right_hand_bowing = False
         horizontal_velocity = 0.0
-        vertical_velocity = 0.0
-        motion_ratio = 0.0
-        is_mainly_horizontal = False
 
         if len(right_hand_history) >= 2:
             prev_x, prev_y, prev_time = right_hand_history[-2]
@@ -249,25 +245,10 @@ class InstrumentGestureAnalyzer:
 
             dt = curr_time - prev_time
             if dt > 0:
-                # 计算横向和垂直速度
                 horizontal_velocity = abs(curr_x - prev_x) / dt
-                vertical_velocity = abs(curr_y - prev_y) / dt
 
-                # === 关键修改：添加运动方向占比检测 ===
-                # 小提琴拉弓：横向运动应该显著大于垂直运动
-                # 设定比例阈值：horizontal / vertical > 2.0（横向速度至少是垂直的2倍）
-
-                # 处理垂直速度接近0的情况（纯横向运动）
-                if vertical_velocity < 0.01:  # 几乎没有垂直运动
-                    motion_ratio = float('inf')
-                    is_mainly_horizontal = True
-                else:
-                    motion_ratio = horizontal_velocity / vertical_velocity
-                    is_mainly_horizontal = motion_ratio > 2.0  # 横向占主导
-
-                # 原有条件 + 新增方向占比条件
-                # 区分拉小提琴（横向）和打鼓（垂直）
-                right_hand_bowing = (horizontal_velocity > 0.05) and is_mainly_horizontal
+                # 宽松阈值：速度 > 0.05（原本更严格的是0.1）
+                right_hand_bowing = horizontal_velocity > 0.05
 
         right_hand_bowing_score = min(1.0, horizontal_velocity * 10) if right_hand_bowing else 0.0
 
@@ -298,9 +279,6 @@ class InstrumentGestureAnalyzer:
             'left_hand_y_diff': y_diff,
             'right_hand_bowing': right_hand_bowing,
             'horizontal_velocity': horizontal_velocity,
-            'vertical_velocity': vertical_velocity,
-            'motion_ratio': motion_ratio,
-            'is_mainly_horizontal': is_mainly_horizontal,
             'right_left_distance': right_wrist_to_left_wrist_distance,
             'left_hand_score': left_hand_position_score,
             'right_bowing_score': right_hand_bowing_score,
@@ -392,17 +370,13 @@ class InstrumentGestureAnalyzer:
         # 小幅度上下运动表示按键
         key_pressing = 0.02 < vertical_velocity < 0.15
 
-        # 速度上限：排除快速运动（防止误判为Drum）
-        not_too_fast = vertical_velocity < 0.12
-
-        is_piano = hands_level and keyboard_height and not_too_fast
+        is_piano = hands_level and keyboard_height
         confidence = 0.9 if (is_piano and key_pressing) else (0.6 if is_piano else 0.0)
 
         details = {
             'hands_level': hands_level,
             'keyboard_height': keyboard_height,
             'key_pressing': key_pressing,
-            'not_too_fast': not_too_fast,
             'vertical_velocity': vertical_velocity
         }
 
@@ -415,7 +389,6 @@ class InstrumentGestureAnalyzer:
         """
         鼓演奏动作检测（支持双手）
         特征：快速上下运动，鼓的高度，双手不水平（区分Piano）
-        优化：使用滑动窗口最大值捕捉瞬时峰值速度
         """
         if not landmarks or len(landmarks) < 33:
             return False, 0.0, {}
@@ -433,67 +406,40 @@ class InstrumentGestureAnalyzer:
         right_hand_history.append((right_wrist.x, right_wrist.y, time.time()))
         left_hand_history.append((left_wrist.x, left_wrist.y, time.time()))
 
-        # === 改进：使用滑动窗口最大值计算速度 ===
-        # 计算右手垂直速度（检查最近5帧内的最大速度）
-        right_velocities = []
+        # 计算右手垂直速度
+        right_velocity = 0.0
         if len(right_hand_history) >= 2:
-            for i in range(1, min(5, len(right_hand_history))):
-                _, prev_y, prev_time = right_hand_history[-i-1]
-                _, curr_y, curr_time = right_hand_history[-i]
-                dt = curr_time - prev_time
-                if dt > 0:
-                    velocity = abs(curr_y - prev_y) / dt
-                    right_velocities.append(velocity)
+            _, prev_y_r, prev_time_r = right_hand_history[-2]
+            _, curr_y_r, curr_time_r = right_hand_history[-1]
+            dt_r = curr_time_r - prev_time_r
+            if dt_r > 0:
+                right_velocity = abs(curr_y_r - prev_y_r) / dt_r
 
-        right_velocity = max(right_velocities) if right_velocities else 0.0
-
-        # 计算左手垂直速度（检查最近5帧内的最大速度）
-        left_velocities = []
+        # 计算左手垂直速度
+        left_velocity = 0.0
         if len(left_hand_history) >= 2:
-            for i in range(1, min(5, len(left_hand_history))):
-                _, prev_y, prev_time = left_hand_history[-i-1]
-                _, curr_y, curr_time = left_hand_history[-i]
-                dt = curr_time - prev_time
-                if dt > 0:
-                    velocity = abs(curr_y - prev_y) / dt
-                    left_velocities.append(velocity)
-
-        left_velocity = max(left_velocities) if left_velocities else 0.0
+            _, prev_y_l, prev_time_l = left_hand_history[-2]
+            _, curr_y_l, curr_time_l = left_hand_history[-1]
+            dt_l = curr_time_l - prev_time_l
+            if dt_l > 0:
+                left_velocity = abs(curr_y_l - prev_y_l) / dt_l
 
         # 使用双手中的最大速度
         vertical_velocity = max(right_velocity, left_velocity)
 
-        # 快速鼓击动作（保持0.08，因为使用了最大值计算）
+        # 快速鼓击动作（降低速度要求，从0.2改为0.08，更容易识别）
         fast_drumming = vertical_velocity > 0.08
 
-        # 鼓的高度（扩大范围：0.3-0.6 → 0.2-0.7）
-        drum_height = (0.2 < right_wrist.y < 0.7) or (0.2 < left_wrist.y < 0.7)
+        # 鼓的高度（中等水平）
+        drum_height = (0.3 < right_wrist.y < 0.6) or (0.3 < left_wrist.y < 0.6)
 
-        # 双手不水平（放宽条件：0.15 → 0.05，允许同时击打）
-        y_diff = abs(left_wrist.y - right_wrist.y)
-        hands_not_level = y_diff > 0.05
-
-        is_drum = fast_drumming and drum_height and hands_not_level
+        is_drum = fast_drumming and drum_height
         confidence = min(1.0, vertical_velocity * 3) if is_drum else 0.0
-
-        # 调试日志输出（帮助用户查看实际值）
-        print(f"[DRUM DEBUG] "
-              f"V-vel={vertical_velocity:.4f} (R:{right_velocity:.4f}, L:{left_velocity:.4f}), "
-              f"Cond1_fast={fast_drumming} (>{0.08}), "
-              f"Cond2_height={drum_height} (R_y:{right_wrist.y:.3f}, L_y:{left_wrist.y:.3f}), "
-              f"Cond3_not_level={hands_not_level} (y_diff:{y_diff:.3f} >{0.05}), "
-              f"is_drum={is_drum}, conf={confidence:.3f} (need>0.35)")
 
         details = {
             'fast_drumming': fast_drumming,
             'drum_height': drum_height,
-            'hands_not_level': hands_not_level,
-            'vertical_velocity': vertical_velocity,
-            'right_velocity': right_velocity,
-            'left_velocity': left_velocity,
-            'y_diff': y_diff,
-            'right_wrist_y': right_wrist.y,
-            'left_wrist_y': left_wrist.y
+            'vertical_velocity': vertical_velocity
         }
 
         return is_drum, confidence, details
@@ -576,7 +522,7 @@ class InstrumentGestureAnalyzer:
         is_drum, conf_drum, _ = InstrumentGestureAnalyzer.detect_drum_gesture(
             landmarks, right_hand_history, left_hand_history
         )
-        if is_drum and conf_drum > 0.35:
+        if is_drum and conf_drum > 0.6:
             detected_instruments['drum'] = conf_drum
 
         # 检测小号（降低置信度阈值，从0.7改为0.55）
@@ -738,25 +684,12 @@ class PoseBodyDetector:
         print(f"[优化] 使用MediaPipe Lite模型（model_complexity={self.config['model_complexity']}）")
 
     def start_camera(self, camera_id: int = 0) -> bool:
-        """启动摄像头（跨平台支持）"""
+        """启动摄像头"""
         try:
             if self.cap is not None:
                 self.stop_camera()
 
-            # 跨平台摄像头后端选择
-            system = platform.system()
-            if system == 'Windows':
-                # Windows使用DirectShow后端
-                self.cap = cv2.VideoCapture(camera_id, cv2.CAP_DSHOW)
-                print(f"[摄像头] Windows系统，使用DirectShow后端")
-            elif system == 'Darwin':
-                # macOS使用AVFoundation后端
-                self.cap = cv2.VideoCapture(camera_id, cv2.CAP_AVFOUNDATION)
-                print(f"[摄像头] macOS系统，使用AVFoundation后端")
-            else:
-                # Linux使用V4L2后端
-                self.cap = cv2.VideoCapture(camera_id, cv2.CAP_V4L2)
-                print(f"[摄像头] Linux系统，使用V4L2后端")
+            self.cap = cv2.VideoCapture(camera_id)
 
             # 设置摄像头参数
             self.cap.set(cv2.CAP_PROP_FRAME_WIDTH, 640)
