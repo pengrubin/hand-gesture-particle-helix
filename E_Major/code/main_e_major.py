@@ -1,515 +1,484 @@
 """
-E_Major 人体姿态音频控制系统主程序
-简化版应用 - 专注于音频控制，移除粒子系统
+E Major Virtual Orchestra Conductor - Main Program
 
-核心功能:
-- 使用 MediaPipe Pose 检测人体姿态
-- 识别小提琴演奏动作
-- 根据检测结果控制11个音轨的播放和音量
-- 实时显示摄像头窗口和骨骼点可视化
+Interactive virtual orchestra conductor using hand gestures to control
+multi-track audio playback through 9-zone spatial mapping.
 """
 
 import cv2
-import pygame
-import time
-import os
+import logging
 import sys
-import platform
-import numpy as np
+import time
+from typing import Dict, Set
+from pathlib import Path
 
-# 添加父目录到路径（用于导入父目录的模块）
-current_dir = os.path.dirname(os.path.abspath(__file__))
-parent_dir = os.path.dirname(current_dir)
-project_root = os.path.dirname(parent_dir)
-sys.path.append(parent_dir)
-sys.path.append(project_root)
+# Import project modules
+from hand_gesture_detector import HandGestureDetector, GestureType, HandData
+from grid_zone_detector import GridZoneDetector
+from e_major_audio_controller import EMajorAudioController
+import config
 
-# 导入本地模块（需要创建这些模块）
-try:
-    from pose_body_detector import PoseBodyDetector
-    from e_major_audio_controller import EMajorAudioController
-    print("✓ 成功导入核心模块")
-except ImportError as e:
-    print(f"✗ 导入模块失败: {e}")
-    print("请确保 pose_body_detector.py 和 e_major_audio_controller.py 在同一目录下")
-    sys.exit(1)
+# Configure logging
+logging.basicConfig(
+    level=getattr(logging, config.LOG_LEVEL),
+    format=config.LOG_FORMAT,
+    datefmt=config.LOG_DATE_FORMAT
+)
+logger = logging.getLogger(__name__)
 
 
-class EMajorApp:
-    """E_Major 人体姿态音频控制应用主类"""
+class VirtualOrchestraConductor:
+    """
+    Main application class for the virtual orchestra conductor.
+
+    Integrates hand gesture detection, zone mapping, and audio control
+    to create an interactive conducting experience.
+    """
 
     def __init__(self):
-        """初始化E_Major应用"""
-        print("\n" + "="*60)
-        print("=== E_Major 人体姿态音频控制系统 ===")
-        print("="*60)
-        print("\n系统功能:")
-        print("• 检测人体 → 播放管弦乐（小提琴静音）")
-        print("• 检测小提琴动作 → 增强小提琴声部")
-        print("• 无人检测 → 自动暂停所有音轨\n")
+        """Initialize the virtual orchestra conductor."""
+        logger.info("Initializing Virtual Orchestra Conductor...")
 
-        # 显示平台信息
-        system = platform.system()
-        machine = platform.machine()
-        python_version = f"{sys.version_info.major}.{sys.version_info.minor}.{sys.version_info.micro}"
+        # Validate audio files
+        self._validate_audio_files()
 
-        if system == "Darwin":
-            processor_type = "Apple Silicon" if machine == "arm64" else "Intel"
+        # Initialize camera
+        self.camera = cv2.VideoCapture(config.CAMERA_INDEX)
+        self.camera.set(cv2.CAP_PROP_FRAME_WIDTH, config.CAMERA_WIDTH)
+        self.camera.set(cv2.CAP_PROP_FRAME_HEIGHT, config.CAMERA_HEIGHT)
+        self.camera.set(cv2.CAP_PROP_FPS, config.CAMERA_FPS)
+
+        if not self.camera.isOpened():
+            raise RuntimeError("Failed to open camera")
+
+        # Get actual frame dimensions
+        ret, test_frame = self.camera.read()
+        if not ret:
+            raise RuntimeError("Failed to read from camera")
+
+        frame_height, frame_width = test_frame.shape[:2]
+        logger.info(f"Camera resolution: {frame_width}x{frame_height}")
+
+        # Initialize components
+        self.gesture_detector = HandGestureDetector(
+            min_detection_confidence=config.MIN_DETECTION_CONFIDENCE,
+            min_tracking_confidence=config.MIN_TRACKING_CONFIDENCE,
+            max_num_hands=config.MAX_NUM_HANDS,
+            fist_threshold=config.FIST_OPENNESS_THRESHOLD,
+            fist_hold_duration=config.FIST_HOLD_DURATION
+        )
+
+        self.zone_detector = GridZoneDetector(
+            frame_width=frame_width,
+            frame_height=frame_height
+        )
+
+        self.audio_controller = EMajorAudioController(
+            audio_directory=str(config.AUDIO_DIR),
+            volume_transition_speed=config.VOLUME_TRANSITION_SPEED,
+            update_rate=config.VOLUME_UPDATE_RATE
+        )
+
+        # Load all audio tracks
+        self._load_audio_tracks()
+
+        # State tracking
+        self.active_zones: Set[int] = set()
+        self.previous_gesture_states: Dict[str, tuple] = {}  # hand_id -> (zone, gesture)
+        self.fist_triggered_zones: Set[tuple] = set()  # (hand_id, zone) pairs that triggered fist action
+
+        # Performance tracking
+        self.frame_count = 0
+        self.start_time = time.time()
+
+        logger.info("Initialization complete")
+
+    def _validate_audio_files(self):
+        """Validate that all required audio files exist."""
+        logger.info("Validating audio files...")
+        status = config.validate_audio_files()
+
+        missing_files = [name for name, exists in status.items() if not exists]
+
+        if missing_files:
+            logger.error(f"Missing audio files: {', '.join(missing_files)}")
+            logger.error(f"Please ensure all files are in: {config.AUDIO_DIR}")
+            raise FileNotFoundError(f"Missing {len(missing_files)} audio file(s)")
+
+        logger.info(f"All {len(status)} audio files found")
+
+    def _load_audio_tracks(self):
+        """Load all audio tracks into the controller."""
+        logger.info("Loading audio tracks...")
+        loaded_count = self.audio_controller.load_multiple_tracks(config.AUDIO_FILES)
+
+        if loaded_count != len(config.AUDIO_FILES):
+            logger.warning(f"Only loaded {loaded_count}/{len(config.AUDIO_FILES)} tracks")
         else:
-            processor_type = machine
+            logger.info(f"Successfully loaded all {loaded_count} tracks")
 
-        print(f"运行平台: {system} {processor_type}")
-        print(f"Python版本: {python_version}")
-        print(f"OpenCV版本: {cv2.__version__}")
-        print(f"Pygame版本: {pygame.version.ver}\n")
+        # Set initial volumes to 0
+        for track_name in config.get_all_tracks():
+            self.audio_controller.set_immediate_volume(track_name, config.VOLUME_INITIAL)
 
-        # 初始化pygame（用于窗口管理和音频）
-        print("正在初始化pygame系统...")
-        pygame.init()
-        pygame.mixer.init(frequency=44100, size=-16, channels=2, buffer=2048)
-        print("✓ Pygame系统初始化完成\n")
-
-        # 初始化姿态检测器
-        print("正在初始化姿态检测器...")
-        try:
-            self.pose_detector = PoseBodyDetector()
-            print("✓ 姿态检测器初始化完成")
-        except Exception as e:
-            print(f"✗ 姿态检测器初始化失败: {e}")
-            raise
-
-        # 初始化音频控制器
-        print("\n正在初始化音频控制器...")
-        try:
-            self.audio_controller = EMajorAudioController()
-            print("✓ 音频控制器初始化完成")
-        except Exception as e:
-            print(f"✗ 音频控制器初始化失败: {e}")
-            raise
-
-        # 运行状态标志
-        self.is_running = True
-        self.show_camera = True  # 是否显示摄像头窗口
-        self.show_info = True    # 是否显示信息覆盖层
-        self.paused = False      # 手动暂停标志
-
-        # 性能监控
-        self.fps_counter = 0
-        self.fps_timer = time.time()
-        self.current_fps = 0.0
-
-        # 摄像头窗口名称
-        self.window_name = 'E_Major - 人体姿态音频控制'
-
-        print("\n" + "="*60)
-        print("初始化完成！准备启动应用...")
-        print("="*60 + "\n")
-
-    def start(self):
-        """启动应用"""
-        print("\n正在启动应用...")
+    def run(self):
+        """Main application loop."""
+        logger.info("Starting main loop. Press 'q' to quit.")
 
         try:
-            # 启动摄像头
-            print("\n1. 启动摄像头...")
-            try:
-                if not self.pose_detector.start_camera(0):
-                    print("✗ 摄像头启动失败")
+            while True:
+                # Read frame from camera
+                ret, frame = self.camera.read()
+                if not ret:
+                    logger.error("Failed to read frame from camera")
+                    break
 
-                    # 提供平台特定的解决建议
-                    system = platform.system()
-                    if system == "Darwin":  # macOS
-                        print("\n🔧 macOS 摄像头权限解决方案:")
-                        print("  1. 系统偏好设置 > 安全性与隐私 > 隐私 > 相机")
-                        print("  2. 确保 Terminal 或您的 Python IDE 有摄像头权限")
-                        print("  3. 重新启动终端或 IDE")
-                        print("  4. 确保没有其他应用正在使用摄像头")
-                    elif system == "Windows":
-                        print("\n🔧 Windows 摄像头权限解决方案:")
-                        print("  1. 设置 > 隐私 > 相机")
-                        print("  2. 确保应用有摄像头权限")
-                        print("  3. 检查设备管理器中的摄像头状态")
+                # Mirror frame for intuitive interaction
+                frame = cv2.flip(frame, 1)
 
-                    return
+                # Process frame
+                self._process_frame(frame)
 
-                print("✓ 摄像头启动成功")
-            except Exception as camera_error:
-                print(f"✗ 摄像头启动异常: {camera_error}")
-                import traceback
-                traceback.print_exc()
-                return
+                # Display frame
+                cv2.imshow(config.WINDOW_NAME, frame)
 
-            # 初始化音频系统
-            print("\n2. 初始化音频系统...")
-            try:
-                if not self.audio_controller.initialize():
-                    print("✗ 音频初始化失败，请检查音频文件路径")
-                    return
-                print("✓ 音频系统就绪（11个音轨已加载）")
-            except Exception as audio_error:
-                print(f"✗ 音频初始化异常: {audio_error}")
-                import traceback
-                traceback.print_exc()
-                return
+                # Handle keyboard input
+                key = cv2.waitKey(1) & 0xFF
+                if key == ord('q'):
+                    logger.info("Quit command received")
+                    break
+                elif key == ord('p'):
+                    # Manual play/pause toggle
+                    self._toggle_playback()
+                elif key == ord('s'):
+                    # Stop all
+                    self._stop_all()
 
-            # 等待系统稳定
-            print("\n3. 系统初始化中...")
-            time.sleep(1.0)
-
-            # 显示控制说明
-            self.print_control_instructions()
-
-            # 进入主循环
-            print("\n" + "="*60)
-            print("应用启动成功！开始运行主循环...")
-            print("="*60 + "\n")
-
-            self.run_main_loop()
+                # Update frame counter
+                self.frame_count += 1
 
         except KeyboardInterrupt:
-            print("\n\n用户按下 Ctrl+C，准备退出...")
-        except Exception as e:
-            print(f"\n✗ 启动错误: {e}")
-            import traceback
-            traceback.print_exc()
+            logger.info("Interrupted by user")
+
         finally:
-            self.cleanup()
+            self._cleanup()
 
-    def print_control_instructions(self):
-        """显示控制说明"""
-        print("\n" + "="*60)
-        print("=== 控制说明 ===")
-        print("="*60)
+    def _process_frame(self, frame):
+        """
+        Process a single frame for gesture detection and audio control.
 
-        print("\n【键盘控制】")
-        print("  C键 - 切换摄像头显示开/关")
-        print("  I键 - 切换信息显示开/关")
-        print("  P键 - 手动暂停/恢复音频")
-        print("  R键 - 重置音频到起始位置")
-        print("  ESC键 - 退出应用")
+        Args:
+            frame: OpenCV frame (numpy array)
+        """
+        # Detect hands and gestures
+        hand_data_list, annotated_frame = self.gesture_detector.process_frame(frame)
 
-        print("\n【音频控制逻辑】")
-        print("  • 无人检测 → 暂停所有音轨")
-        print("  • 有人检测（无小提琴动作）→ 播放管弦乐（小提琴静音）")
-        print("  • 有人检测 + 小提琴动作 → 全部播放（小提琴音量100%）")
+        # Draw grid overlay
+        if config.SHOW_GRID:
+            self.zone_detector.draw_grid_on_frame(annotated_frame)
 
-        print("\n【小提琴动作识别】")
-        print("  • 左手抬高（肩膀以上）")
-        print("  • 右手抬高（肩膀以上）")
-        print("  • 双臂呈小提琴演奏姿势")
+        # Clear active zones for this frame
+        current_active_zones = set()
 
-        print("\n【11个音轨列表】")
-        track_names = [
-            "1: Oboe 1", "2: Oboe 2", "3: Organ", "4: Timpani",
-            "5: Trumpet 1", "6: Trumpet 2", "7: Trumpet 3",
-            "8: Violas", "9: Violin (主奏)", "10: Violins 1", "11: Violins 2"
-        ]
-        for name in track_names:
-            print(f"  • Track {name}")
+        # Process each detected hand
+        for hand_data in hand_data_list:
+            self._process_hand(hand_data, annotated_frame, current_active_zones)
 
-        print("\n" + "="*60 + "\n")
+        # Update active zones
+        self.active_zones = current_active_zones
 
-    def run_main_loop(self):
-        """主循环"""
-        last_time = time.time()
-        frame_count = 0
+        # Draw volume bars
+        if config.SHOW_VOLUME_BARS:
+            self._draw_volume_bars(annotated_frame)
 
-        while self.is_running:
-            current_time = time.time()
-            dt = current_time - last_time
-            last_time = current_time
-            frame_count += 1
+        # Draw FPS
+        self._draw_fps(annotated_frame)
 
-            # 处理键盘事件
-            self.handle_events()
+        # Copy annotated frame back to original
+        frame[:] = annotated_frame
 
-            # 获取摄像头帧
-            frame = self.pose_detector.get_current_frame()
+    def _process_hand(self, hand_data: HandData, frame, active_zones: Set[int]):
+        """
+        Process a single detected hand for zone and gesture control.
 
-            if frame is not None:
-                # 处理姿态检测（带骨骼点可视化）
-                processed_frame = self.pose_detector.process_frame(frame, show_skeleton=True)
+        Args:
+            hand_data: HandData object with gesture information
+            frame: OpenCV frame for visualization
+            active_zones: Set to track active zones in this frame
+        """
+        # Determine which zone the hand is in
+        zone = self.zone_detector.get_zone_from_position(
+            hand_data.center_x,
+            hand_data.center_y
+        )
 
-                # 获取姿态数据
-                pose_data = self.pose_detector.get_pose_data()
+        if zone == 0:
+            return  # Hand outside frame
 
-                # 更新音频控制（除非手动暂停）
-                if not self.paused:
-                    detected_instruments = pose_data.get('detected_instruments', {})
-                    self.audio_controller.update_from_instruments(
-                        person_detected=pose_data['person_detected'],
-                        detected_instruments=detected_instruments
-                    )
+        # Add to active zones
+        active_zones.add(zone)
 
-                # 显示摄像头窗口
-                if self.show_camera:
-                    self.show_camera_window(processed_frame, pose_data)
+        # Highlight active zone
+        self._highlight_zone(frame, zone)
 
-            # 更新FPS
-            self.update_fps()
+        # Hand identifier for state tracking
+        hand_id = hand_data.handedness
 
-            # 限制帧率到30fps（降低CPU使用率）
-            target_fps = 30.0
-            frame_time = 1.0 / target_fps
-            if dt < frame_time:
-                time.sleep(frame_time - dt)
+        # Get previous state
+        prev_state = self.previous_gesture_states.get(hand_id, (0, GestureType.UNKNOWN))
+        prev_zone, prev_gesture = prev_state
 
-            # 每100帧显示一次性能信息（可选）
-            if frame_count % 100 == 0:
-                print(f"[性能] FPS: {self.current_fps:.1f} | 运行时间: {current_time - self.fps_timer:.1f}s")
+        # Check for gesture changes
+        if config.is_global_control_zone(zone):
+            # Zone 5: Global control
+            self._handle_global_control(hand_data)
+        else:
+            # Individual zone control
+            self._handle_zone_control(hand_data, zone, hand_id)
 
-    def handle_events(self):
-        """处理键盘事件"""
-        if not self.show_camera:
+        # Update previous state
+        self.previous_gesture_states[hand_id] = (zone, hand_data.gesture)
+
+    def _handle_global_control(self, hand_data: HandData):
+        """
+        Handle global play/pause control in zone 5.
+
+        Args:
+            hand_data: HandData object
+        """
+        if hand_data.gesture == GestureType.OPEN_PALM:
+            # Set all tracks to maximum volume for synchronized volume bars
+            all_tracks = config.get_all_tracks()
+            for track_name in all_tracks:
+                self.audio_controller.set_target_volume(track_name, config.VOLUME_MAX)
+
+            # Then start/resume playback if needed
+            if not self.audio_controller.is_playing or self.audio_controller.is_paused:
+                logger.info("Global play triggered - all volumes set to maximum")
+                self.audio_controller.play_all_tracks()
+
+        elif hand_data.gesture == GestureType.CLOSED_FIST:
+            # Check if fist has been held for required duration
+            if self.gesture_detector.is_sustained_fist(hand_data):
+                hand_id = hand_data.handedness
+                trigger_key = (hand_id, 5)
+
+                # Only trigger once per sustained fist
+                if trigger_key not in self.fist_triggered_zones:
+                    logger.info("Global pause triggered (fist held for 1 second)")
+                    self.audio_controller.pause_all_tracks()
+                    self.fist_triggered_zones.add(trigger_key)
+        else:
+            # Reset trigger tracking when gesture changes
+            hand_id = hand_data.handedness
+            trigger_key = (hand_id, 5)
+            if trigger_key in self.fist_triggered_zones:
+                self.fist_triggered_zones.remove(trigger_key)
+
+    def _handle_zone_control(self, hand_data: HandData, zone: int, hand_id: str):
+        """
+        Handle individual zone volume control.
+
+        Args:
+            hand_data: HandData object
+            zone: Zone number (1-9)
+            hand_id: Hand identifier ("Left" or "Right")
+        """
+        # Get tracks for this zone
+        tracks = config.get_tracks_for_zone(zone)
+        if not tracks:
             return
 
-        # OpenCV窗口事件（仅在窗口显示时处理）
-        key = cv2.waitKey(1) & 0xFF
+        if hand_data.gesture == GestureType.OPEN_PALM:
+            # Increase volume to max
+            for track_name in tracks:
+                self.audio_controller.set_target_volume(track_name, config.VOLUME_MAX)
 
-        if key == 255:  # 没有按键
-            return
+            # Start playback if not already playing
+            if not self.audio_controller.is_playing:
+                logger.info("Starting playback (triggered by zone gesture)")
+                self.audio_controller.play_all_tracks()
 
-        # ESC键 - 退出
-        if key == 27:
-            print("\n[用户操作] 按下ESC键，准备退出...")
-            self.is_running = False
+        elif hand_data.gesture == GestureType.CLOSED_FIST:
+            # Check if fist has been held for required duration
+            if self.gesture_detector.is_sustained_fist(hand_data):
+                trigger_key = (hand_id, zone)
 
-        # C键 - 切换摄像头显示
-        elif key == ord('c') or key == ord('C'):
-            self.show_camera = not self.show_camera
-            if not self.show_camera:
-                cv2.destroyAllWindows()
-            status = "开启" if self.show_camera else "关闭"
-            print(f"[用户操作] 摄像头显示: {status}")
-
-        # I键 - 切换信息显示
-        elif key == ord('i') or key == ord('I'):
-            self.show_info = not self.show_info
-            status = "开启" if self.show_info else "关闭"
-            print(f"[用户操作] 信息显示: {status}")
-
-        # P键 - 手动暂停/恢复音频
-        elif key == ord('p') or key == ord('P'):
-            self.paused = not self.paused
-            if self.paused:
-                self.audio_controller.pause_all()
-                print("[用户操作] 音频已手动暂停")
-            else:
-                self.audio_controller.resume_all()
-                print("[用户操作] 音频已手动恢复")
-
-        # R键 - 重置音频位置
-        elif key == ord('r') or key == ord('R'):
-            self.audio_controller.reset_position()
-            print("[用户操作] 音频位置已重置到起点")
-
-    def show_camera_window(self, frame, pose_data):
-        """显示摄像头窗口"""
-        if frame is None:
-            return
-
-        # 添加信息覆盖层
-        if self.show_info:
-            self.add_info_overlay(frame, pose_data)
-
-        # 显示窗口
-        cv2.imshow(self.window_name, frame)
-
-    def add_info_overlay(self, frame, pose_data):
-        """添加信息覆盖层到摄像头画面"""
-        h, w = frame.shape[:2]
-
-        # 信息面板位置和大小
-        panel_width = 360
-        panel_x = w - panel_width - 10
-        panel_y = 10
-
-        # 动态计算面板高度
-        base_height = 420
-        panel_height = base_height
-
-        # 绘制半透明背景
-        overlay = frame.copy()
-        cv2.rectangle(overlay, (panel_x, panel_y),
-                     (w - 10, panel_y + panel_height), (0, 0, 0), -1)
-        cv2.addWeighted(overlay, 0.7, frame, 0.3, 0, frame)
-
-        # 绘制边框
-        cv2.rectangle(frame, (panel_x, panel_y),
-                     (w - 10, panel_y + panel_height), (255, 255, 255), 2)
-
-        # 准备信息文本
-        info_lines = []
-
-        # 系统性能
-        info_lines.append(f"FPS: {self.current_fps:.1f}")
-        info_lines.append("")
-
-        # 检测状态
-        info_lines.append("=== Detection Status ===")
-        person_status = "✓ Yes" if pose_data['person_detected'] else "✗ No"
-        info_lines.append(f"Person: {person_status}")
-
-        # 显示检测到的乐器
-        detected_instruments = pose_data.get('detected_instruments', {})
-        if detected_instruments:
-            inst_list = [f"{inst.capitalize()}({conf:.2f})"
-                        for inst, conf in detected_instruments.items()]
-            info_lines.append(f"Detected: {', '.join(inst_list)}")
+                # Only trigger once per sustained fist
+                if trigger_key not in self.fist_triggered_zones:
+                    logger.info(f"Decreasing volume for zone {zone} tracks (fist held)")
+                    for track_name in tracks:
+                        self.audio_controller.set_target_volume(track_name, config.VOLUME_MIN)
+                    self.fist_triggered_zones.add(trigger_key)
         else:
-            info_lines.append("Detected: None")
+            # Reset trigger tracking when gesture changes
+            trigger_key = (hand_id, zone)
+            if trigger_key in self.fist_triggered_zones:
+                self.fist_triggered_zones.remove(trigger_key)
 
-        info_lines.append(f"Confidence: {pose_data['pose_confidence']:.2f}")
-        info_lines.append("")
+    def _highlight_zone(self, frame, zone: int):
+        """
+        Highlight an active zone on the frame.
 
-        # 音频状态
-        info_lines.append("=== Audio Status ===")
-        audio_status = self.audio_controller.get_status_info()
+        Args:
+            frame: OpenCV frame
+            zone: Zone number to highlight
+        """
+        boundaries = self.zone_detector.get_zone_boundaries(zone)
+        if boundaries:
+            x_min, y_min, x_max, y_max = boundaries
 
-        current_state = audio_status.get('current_state', 'Unknown')
-        info_lines.append(f"State: {current_state}")
+            # Draw colored overlay
+            overlay = frame.copy()
+            cv2.rectangle(overlay, (x_min, y_min), (x_max, y_max), config.COLOR_ACTIVE_ZONE, -1)
+            cv2.addWeighted(overlay, 0.2, frame, 0.8, 0, frame)
 
-        playback_pos = audio_status.get('playback_position', 0.0)
-        info_lines.append(f"Position: {playback_pos:.1f}s")
+            # Draw zone description
+            zone_desc = config.get_zone_description(zone)
+            center = self.zone_detector.get_zone_center(zone)
+            if center:
+                cv2.putText(
+                    frame,
+                    zone_desc,
+                    (center[0] - 50, center[1] + 30),
+                    config.FONT_FACE,
+                    1.0,
+                    config.COLOR_ACTIVE_ZONE,
+                    2
+                )
 
-        if self.paused:
-            info_lines.append("Mode: Manual Pause")
+    def _draw_volume_bars(self, frame):
+        """
+        Draw volume level bars for all zones.
+
+        Args:
+            frame: OpenCV frame
+        """
+        bar_width = 20
+        bar_height = 100
+        margin = 10
+
+        for zone in range(1, 10):
+            tracks = config.get_tracks_for_zone(zone)
+            if not tracks:
+                continue
+
+            # Calculate average volume for zone
+            total_volume = 0.0
+            for track_name in tracks:
+                track_info = self.audio_controller.get_track_info(track_name)
+                if track_info:
+                    total_volume += track_info['current_volume']
+
+            avg_volume = total_volume / len(tracks) if tracks else 0.0
+
+            # Get zone center
+            center = self.zone_detector.get_zone_center(zone)
+            if not center:
+                continue
+
+            # Draw volume bar
+            bar_x = center[0] - bar_width // 2
+            bar_y = center[1] - bar_height - 50
+
+            # Background
+            cv2.rectangle(
+                frame,
+                (bar_x, bar_y),
+                (bar_x + bar_width, bar_y + bar_height),
+                (50, 50, 50),
+                -1
+            )
+
+            # Volume level
+            filled_height = int(bar_height * avg_volume)
+            if filled_height > 0:
+                cv2.rectangle(
+                    frame,
+                    (bar_x, bar_y + bar_height - filled_height),
+                    (bar_x + bar_width, bar_y + bar_height),
+                    (0, 255, 0),
+                    -1
+                )
+
+            # Border
+            cv2.rectangle(
+                frame,
+                (bar_x, bar_y),
+                (bar_x + bar_width, bar_y + bar_height),
+                (255, 255, 255),
+                2
+            )
+
+    def _draw_fps(self, frame):
+        """
+        Draw FPS counter on frame.
+
+        Args:
+            frame: OpenCV frame
+        """
+        elapsed = time.time() - self.start_time
+        fps = self.frame_count / elapsed if elapsed > 0 else 0
+
+        # Draw status text
+        status_text = f"FPS: {fps:.1f} | Playing: {self.audio_controller.is_playing} | Paused: {self.audio_controller.is_paused}"
+
+        cv2.putText(
+            frame,
+            status_text,
+            (10, 30),
+            config.FONT_FACE,
+            0.7,
+            (0, 255, 0),
+            2
+        )
+
+    def _toggle_playback(self):
+        """Toggle between play and pause."""
+        if self.audio_controller.is_playing and not self.audio_controller.is_paused:
+            logger.info("Manual pause")
+            self.audio_controller.pause_all_tracks()
         else:
-            info_lines.append("Mode: Auto Control")
+            logger.info("Manual play")
+            self.audio_controller.play_all_tracks()
 
-        info_lines.append("")
+    def _stop_all(self):
+        """Stop all playback and reset volumes."""
+        logger.info("Stopping all tracks")
+        self.audio_controller.stop_all_tracks()
 
-        # 激活组
-        info_lines.append("=== Activated Groups ===")
-        activated_groups = audio_status.get('activated_groups', [])
+        # Reset all volumes to 0
+        for track_name in config.get_all_tracks():
+            self.audio_controller.set_immediate_volume(track_name, config.VOLUME_MIN)
 
-        if activated_groups:
-            for group in sorted(activated_groups):
-                info_lines.append(f"✓ {group.capitalize()}")
-        else:
-            info_lines.append("None")
+    def _cleanup(self):
+        """Clean up resources."""
+        logger.info("Cleaning up...")
 
-        info_lines.append("")
+        # Release camera
+        if self.camera.isOpened():
+            self.camera.release()
 
-        # 音轨音量（带可视化进度条）
-        info_lines.append("=== Track Volumes ===")
+        # Close audio controller
+        self.audio_controller.close()
 
-        track_names = {
-            1: "Oboe1", 2: "Oboe2", 3: "Organ", 4: "Timpani",
-            5: "Trp1", 6: "Trp2", 7: "Trp3", 8: "Violas",
-            9: "Violin*", 10: "Violins1", 11: "Violins2"
-        }
+        # Close gesture detector
+        self.gesture_detector.close()
 
-        volumes = audio_status.get('volumes', {})
+        # Close all windows
+        cv2.destroyAllWindows()
 
-        for track_id in sorted(track_names.keys()):
-            name = track_names[track_id]
-            vol = volumes.get(track_id, 0.0)
-            vol_percent = int(vol * 100)
-
-            # 创建进度条
-            bar_length = 10
-            filled = int(bar_length * vol)
-            bar = "█" * filled + "░" * (bar_length - filled)
-
-            # 特殊标记小提琴主奏
-            marker = " *" if track_id == 9 else ""
-            info_lines.append(f"{name:8s}: {bar} {vol_percent:3d}%{marker}")
-
-        # 绘制文本
-        line_height = 20
-        text_color = (200, 200, 200)  # 浅灰色
-
-        for i, line in enumerate(info_lines):
-            y_pos = panel_y + 25 + i * line_height
-
-            # 根据内容设置颜色
-            if "✓" in line:
-                color = (0, 255, 0)  # 绿色
-            elif "✗" in line:
-                color = (0, 0, 255)  # 红色
-            elif "===" in line:
-                color = (0, 255, 255)  # 黄色（标题）
-            elif "*" in line:
-                color = (255, 100, 255)  # 紫色（小提琴主奏）
-            else:
-                color = text_color
-
-            cv2.putText(frame, line, (panel_x + 10, y_pos),
-                       cv2.FONT_HERSHEY_SIMPLEX, 0.5, color, 1, cv2.LINE_AA)
-
-    def update_fps(self):
-        """更新FPS计数"""
-        self.fps_counter += 1
-        current_time = time.time()
-
-        if current_time - self.fps_timer >= 1.0:
-            self.current_fps = self.fps_counter / (current_time - self.fps_timer)
-            self.fps_counter = 0
-            self.fps_timer = current_time
-
-    def cleanup(self):
-        """清理资源"""
-        print("\n" + "="*60)
-        print("正在清理资源...")
-        print("="*60 + "\n")
-
-        # 清理音频系统
-        try:
-            self.audio_controller.cleanup()
-            print("✓ 音频系统已清理")
-        except Exception as e:
-            print(f"⚠ 音频清理警告: {e}")
-
-        # 停止摄像头
-        try:
-            self.pose_detector.stop_camera()
-            print("✓ 摄像头已停止")
-        except Exception as e:
-            print(f"⚠ 摄像头停止警告: {e}")
-
-        # 关闭OpenCV窗口
-        try:
-            cv2.destroyAllWindows()
-            print("✓ 窗口已关闭")
-        except Exception as e:
-            print(f"⚠ 窗口关闭警告: {e}")
-
-        # 退出pygame
-        try:
-            pygame.quit()
-            print("✓ Pygame已退出")
-        except Exception as e:
-            print(f"⚠ Pygame退出警告: {e}")
-
-        print("\n" + "="*60)
-        print("应用已完全退出，感谢使用！")
-        print("="*60 + "\n")
+        logger.info("Cleanup complete")
 
 
 def main():
-    """主函数入口"""
-    print("\n" + "="*70)
-    print(" "*15 + "E_Major 人体姿态音频控制系统")
-    print(" "*20 + "版本 1.0 - 2024")
-    print("="*70)
-
+    """Main entry point."""
     try:
-        # 创建并启动应用
-        app = EMajorApp()
-        app.start()
-
-    except KeyboardInterrupt:
-        print("\n\n用户中断（Ctrl+C），正在退出...")
-
+        conductor = VirtualOrchestraConductor()
+        conductor.run()
     except Exception as e:
-        print(f"\n✗ 应用错误: {e}")
-        import traceback
-        print("\n完整错误堆栈:")
-        traceback.print_exc()
-
-    finally:
-        print("\n程序结束。")
+        logger.exception(f"Fatal error: {e}")
+        sys.exit(1)
 
 
 if __name__ == "__main__":

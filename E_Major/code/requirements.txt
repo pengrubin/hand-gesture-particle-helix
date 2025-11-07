@@ -1,0 +1,15 @@
+# E Major Virtual Orchestra Conductor - Python Dependencies
+
+# Computer vision and hand tracking
+opencv-python>=4.8.0
+mediapipe>=0.10.0
+
+# Audio processing and playback
+pydub>=0.25.1
+simpleaudio>=1.0.4
+
+# Numerical operations
+numpy>=1.24.0
+
+# Optional: For better performance on some systems
+# opencv-contrib-python>=4.8.0  # Extended OpenCV features

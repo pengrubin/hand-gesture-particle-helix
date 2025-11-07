@@ -1,599 +1,411 @@
-#!/usr/bin/env python3
 """
-E Major 音频控制器
-基于人体检测和小提琴动作的音频控制系统
+E Major Audio Controller - Multi-track audio playback with independent volume control.
 
-管理11个音轨：
-- 非小提琴音轨（1-8）：Oboe, Organ, Timpani, Trumpet, Violas
-- 小提琴音轨（9-11）：Violin, Violins_1, Violins_2
-
-状态机：
-1. NO_PERSON: 无人检测 → 所有音轨暂停
-2. PERSON_NO_VIOLIN: 检测到人但无小提琴动作 → 非小提琴音轨播放，小提琴音轨静音
-3. PERSON_WITH_VIOLIN: 检测到人和小提琴动作 → 所有音轨播放
+This module manages synchronized playback of multiple audio tracks with
+individual volume control using pydub and simpleaudio.
 """
 
-import pygame
-import threading
-import time
 import os
-from typing import Dict, Set, Optional
-from enum import Enum
+import time
+import threading
+from typing import Dict, List, Optional
+from pathlib import Path
+from dataclasses import dataclass
+import logging
+
+try:
+    from pydub import AudioSegment
+    from pydub.playback import _play_with_simpleaudio
+    import simpleaudio as sa
+except ImportError:
+    raise ImportError(
+        "pydub and simpleaudio are required. Install with: "
+        "pip install pydub simpleaudio"
+    )
+
+import config
+
+logger = logging.getLogger(__name__)
 
 
-class PlaybackState(Enum):
-    """播放状态枚举"""
-    NO_PERSON = "no_person"                     # 状态1：无人检测
-    PERSON_DETECTED = "person_detected"         # 状态2：检测到人
+@dataclass
+class AudioTrack:
+    """Data structure for an audio track."""
+    name: str
+    file_path: str
+    audio_segment: Optional[AudioSegment] = None
+    current_volume: float = 0.0  # 0.0 to 1.0
+    target_volume: float = 0.0  # 0.0 to 1.0
+    play_obj: Optional[sa.PlayObject] = None
 
 
 class EMajorAudioController:
-    """E Major 音频控制器"""
+    """
+    Controls multi-track audio playback with independent volume control.
 
-    def __init__(self):
-        """初始化 E Major 音频控制器"""
+    Features:
+    - Synchronized playback of multiple tracks
+    - Independent volume control per track
+    - Smooth volume transitions (fade in/out)
+    - Global play/pause control
+    """
 
-        # 主旋律（始终100%）
-        self.MAIN_MELODY = {
-            9: "violin_in_E.mp3"
-        }
-
-        # 小提琴组（由小提琴手势激活）
-        self.VIOLIN_GROUP = {
-            8: "Violas_in_E.mp3",
-            10: "Violins_1_in_E.mp3",
-            11: "Violins_2_in_E.mp3"
-        }
-
-        # 单簧管组（由单簧管手势激活）
-        self.CLARINET_GROUP = {
-            1: "Oboe_1_in_E.mp3",
-            2: "Oboe_2_in_E.mp3"
-        }
-
-        # 钢琴组（由钢琴手势激活）
-        self.PIANO_GROUP = {
-            3: "Organ_in_E.mp3"
-        }
-
-        # 鼓组（由鼓手势激活）
-        self.DRUM_GROUP = {
-            4: "Timpani_in_E.mp3"
-        }
-
-        # 小号组（由小号手势激活）
-        self.TRUMPET_GROUP = {
-            5: "Trumpet_in_C_1_in_E.mp3",
-            6: "Trumpet_in_C_2_in_E.mp3",
-            7: "Trumpet_in_C_3_in_E.mp3"
-        }
-
-        # 合并所有音轨
-        self.audio_files = {
-            **self.MAIN_MELODY,
-            **self.VIOLIN_GROUP,
-            **self.CLARINET_GROUP,
-            **self.PIANO_GROUP,
-            **self.DRUM_GROUP,
-            **self.TRUMPET_GROUP
-        }
-
-        # 音频路径基准目录（使用相对路径）
-        # 当前文件在 E_Major/code/ 下，音频在 E_Major/ 下
-        self.base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-
-        # 音频对象
-        self.audio_sounds: Dict[int, pygame.mixer.Sound] = {}
-        self.audio_channels: Dict[int, pygame.mixer.Channel] = {}
-        self.audio_lengths: Dict[int, float] = {}
-
-        # 播放控制
-        self.audio_volumes: Dict[int, float] = {i: 0.0 for i in range(1, 12)}
-        self.target_volumes: Dict[int, float] = {i: 0.0 for i in range(1, 12)}
-        self.playing_tracks: Set[int] = set()
-
-        # 激活组跟踪（记忆哪些组已被激活）
-        self.activated_groups: Set[str] = set()  # {'violin', 'clarinet', 'piano', 'drum', 'trumpet'}
-
-        # 断点续播：位置跟踪
-        self.master_playing = False
-        self.session_start_time: Optional[float] = None  # 播放会话开始时间
-        self.total_pause_duration = 0.0                  # 总暂停时间
-        self.current_pause_start: Optional[float] = None # 当前暂停开始时间
-
-        # 状态机
-        self.current_state = PlaybackState.NO_PERSON
-        self.previous_state = PlaybackState.NO_PERSON
-
-        # 音量渐变控制
-        self.volume_fade_speed = 0.25  # 音量渐变速度（0-1之间，值越大渐变越快）
-        self.fade_thread_running = False
-
-        # 状态稳定性控制（避免状态抖动）
-        self.state_change_threshold = 0.3  # 状态切换阈值（秒）
-        self.last_state_change_time = 0.0
-
-        # 启用标志
-        self.enabled = False
-
-        print("🎵 E Major 音频控制器初始化...")
-        print(f"   主旋律: {len(self.MAIN_MELODY)} 个")
-        print(f"   小提琴组: {len(self.VIOLIN_GROUP)} 个")
-        print(f"   单簧管组: {len(self.CLARINET_GROUP)} 个")
-        print(f"   钢琴组: {len(self.PIANO_GROUP)} 个")
-        print(f"   鼓组: {len(self.DRUM_GROUP)} 个")
-        print(f"   小号组: {len(self.TRUMPET_GROUP)} 个")
-        print(f"   总计: {len(self.audio_files)} 个音轨")
-
-    def initialize(self) -> bool:
+    def __init__(
+        self,
+        audio_directory: str,
+        volume_transition_speed: float = 0.5,  # Volume change per second
+        update_rate: float = 0.05  # Volume update interval in seconds
+    ):
         """
-        初始化音频系统
+        Initialize the audio controller.
+
+        Args:
+            audio_directory: Directory containing audio files
+            volume_transition_speed: Speed of volume changes (0.0-1.0 per second)
+            update_rate: How often to update volumes (seconds)
+        """
+        self.audio_directory = Path(audio_directory)
+        self.volume_transition_speed = volume_transition_speed
+        self.update_rate = update_rate
+
+        # Track management
+        self.tracks: Dict[str, AudioTrack] = {}
+        self.is_playing = False
+        self.is_paused = False
+
+        # Threading
+        self._volume_control_thread: Optional[threading.Thread] = None
+        self._stop_event = threading.Event()
+        self._playback_lock = threading.Lock()
+
+        # Playback position tracking
+        self._start_time: Optional[float] = None
+        self._pause_time: Optional[float] = None
+        self._total_pause_duration: float = 0.0
+
+    def load_track(self, track_name: str, file_path: str) -> bool:
+        """
+        Load an audio track from file.
+
+        Args:
+            track_name: Unique identifier for the track
+            file_path: Path to the audio file
 
         Returns:
-            bool: 初始化成功返回 True，失败返回 False
+            True if successfully loaded, False otherwise
         """
         try:
-            # 确保有足够的混音通道（11个音轨需要至少11个通道）
-            required_channels = len(self.audio_files)
-            current_channels = pygame.mixer.get_num_channels()
-            if current_channels < required_channels:
-                pygame.mixer.set_num_channels(required_channels + 1)  # +1 作为安全缓冲
-                print(f"✅ 设置混音通道数: {current_channels} → {required_channels + 1}")
-
-            # 检查文件存在性
-            missing_files = []
-            for track_id, filename in self.audio_files.items():
-                filepath = os.path.join(self.base_dir, filename)
-                if not os.path.exists(filepath):
-                    missing_files.append(filepath)
-
-            if missing_files:
-                print("⚠️ 缺失音频文件:")
-                for file in missing_files:
-                    print(f"   - {file}")
+            full_path = self.audio_directory / file_path
+            if not full_path.exists():
+                logger.error(f"Audio file not found: {full_path}")
                 return False
 
-            # 加载音频文件
-            for track_id, filename in self.audio_files.items():
-                filepath = os.path.join(self.base_dir, filename)
-                try:
-                    print(f"加载音轨 {track_id}: {filename}")
-                    sound = pygame.mixer.Sound(filepath)
-                    sound.set_volume(0.0)
+            audio_segment = AudioSegment.from_file(str(full_path))
 
-                    length = sound.get_length()
-                    print(f"  时长: {length:.1f}秒")
+            self.tracks[track_name] = AudioTrack(
+                name=track_name,
+                file_path=str(full_path),
+                audio_segment=audio_segment,
+                current_volume=0.0,
+                target_volume=0.0
+            )
 
-                    self.audio_sounds[track_id] = sound
-                    self.audio_channels[track_id] = pygame.mixer.Channel(track_id - 1)
-                    self.audio_lengths[track_id] = length
-
-                    print(f"✅ 音轨 {track_id} 加载成功")
-                except Exception as e:
-                    print(f"❌ 音轨 {track_id} 加载失败: {e}")
-                    continue
-
-            if not self.audio_sounds:
-                print("❌ 没有音频文件加载成功")
-                return False
-
-            # 启用控制器
-            self.enabled = True
-
-            # 启动音量渐变线程
-            self.start_fade_thread()
-
-            # 🆕 自动启动播放会话（确保音轨立即可用）
-            self._start_playback_session()
-
-            print(f"✅ E Major 音频控制器就绪，已加载 {len(self.audio_sounds)} 个音轨")
-
+            logger.info(f"Loaded track: {track_name} ({file_path})")
             return True
 
         except Exception as e:
-            print(f"❌ 初始化失败: {e}")
+            logger.error(f"Error loading track {track_name}: {e}")
             return False
 
-    def start_fade_thread(self):
-        """启动音量渐变线程"""
-        if self.fade_thread_running:
-            return
-
-        self.fade_thread_running = True
-        fade_thread = threading.Thread(target=self._fade_loop, daemon=True)
-        fade_thread.start()
-        print("✅ 音量渐变线程已启动")
-
-    def _fade_loop(self):
+    def load_multiple_tracks(self, track_mapping: Dict[str, List[str]]) -> int:
         """
-        音量渐变循环（优化版）
-        在独立线程中运行，平滑过渡音量变化
-        优化：降低更新频率到20 FPS，早退出未变化音轨
-        """
-        while self.fade_thread_running:
-            try:
-                has_changes = False
-
-                for track_id in self.audio_sounds.keys():
-                    current_vol = self.audio_volumes[track_id]
-                    target_vol = self.target_volumes[track_id]
-
-                    # 如果当前音量与目标音量差异超过阈值，进行渐变
-                    if abs(current_vol - target_vol) > 0.01:
-                        has_changes = True
-                        volume_diff = target_vol - current_vol
-                        new_vol = current_vol + volume_diff * self.volume_fade_speed
-
-                        # 更新音量
-                        self.audio_volumes[track_id] = new_vol
-                        if track_id in self.audio_sounds:
-                            self.audio_sounds[track_id].set_volume(new_vol)
-
-                # 优化：20 FPS渐变更新频率（从30降低，节省CPU）
-                # 人耳无法区分20 FPS vs 30 FPS的音量变化
-                time.sleep(1/20)
-
-            except KeyError as e:
-                print(f"⚠️ 音量渐变线程键错误: {e}")
-                time.sleep(0.1)
-            except Exception as e:
-                print(f"⚠️ 音量渐变线程错误: {e}")
-                time.sleep(0.1)
-
-    def get_current_position(self) -> float:
-        """
-        获取当前播放位置（考虑暂停时间）
-        实现断点续播机制
-
-        Returns:
-            float: 当前播放位置（秒）
-        """
-        if not self.session_start_time:
-            return 0.0
-
-        current_time = time.time()
-
-        # 计算总的实际播放时间
-        elapsed_since_session = current_time - self.session_start_time
-        actual_play_time = elapsed_since_session - self.total_pause_duration
-
-        # 如果当前正在暂停，还要减去当前暂停的时间
-        if self.current_state == PlaybackState.NO_PERSON and self.current_pause_start:
-            current_pause_time = current_time - self.current_pause_start
-            actual_play_time -= current_pause_time
-
-        # 循环播放检查
-        if self.audio_lengths:
-            min_length = min(self.audio_lengths.values())
-            if actual_play_time >= min_length:
-                actual_play_time = actual_play_time % min_length
-
-        return max(0.0, actual_play_time)
-
-    def update_from_instruments(self, person_detected: bool,
-                               detected_instruments: Dict[str, float]):
-        """
-        根据检测到的乐器更新音频
+        Load multiple audio tracks from a mapping.
 
         Args:
-            person_detected: 是否检测到人
-            detected_instruments: 检测到的乐器字典 {'violin': 0.8, ...}
-        """
-        if not self.enabled:
-            return
-
-        # 确定新状态
-        new_state = (PlaybackState.PERSON_DETECTED if person_detected
-                    else PlaybackState.NO_PERSON)
-
-        # 状态转换
-        current_time = time.time()
-        if new_state != self.current_state:
-            time_since_last_change = current_time - self.last_state_change_time
-            if time_since_last_change >= self.state_change_threshold:
-                self._transition_to_state(new_state)
-                self.last_state_change_time = current_time
-
-        # 如果有人，处理乐器激活
-        if new_state == PlaybackState.PERSON_DETECTED:
-            self._update_instrument_volumes(detected_instruments)
-
-        # 定期输出状态
-        if not hasattr(self, '_last_status_time'):
-            self._last_status_time = 0
-
-        if current_time - self._last_status_time > 2.0:
-            pos = self.get_current_position()
-            state_name = self.current_state.value.upper()
-            activated = ', '.join(self.activated_groups) if self.activated_groups else 'None'
-            print(f"🎵 音频: {state_name}, 位置: {pos:.1f}秒, "
-                  f"检测到: {list(detected_instruments.keys())}, "
-                  f"已激活: {activated}")
-            self._last_status_time = current_time
-
-    def _update_instrument_volumes(self, detected_instruments: Dict[str, float]):
-        """根据检测结果更新乐器组音量"""
-        # 将新检测到的乐器加入激活组
-        if 'violin' in detected_instruments:
-            self.activated_groups.add('violin')
-
-        if 'clarinet' in detected_instruments:
-            self.activated_groups.add('clarinet')
-
-        if 'piano' in detected_instruments:
-            self.activated_groups.add('piano')
-
-        if 'drum' in detected_instruments:
-            self.activated_groups.add('drum')
-
-        if 'trumpet' in detected_instruments:
-            self.activated_groups.add('trumpet')
-
-        # 应用基于激活组的音量
-        self._apply_activated_volumes()
-
-    def _apply_activated_volumes(self):
-        """基于激活组应用音量"""
-        # 主旋律始终100%
-        for track_id in self.MAIN_MELODY.keys():
-            self.target_volumes[track_id] = 1.0
-
-        # 小提琴组
-        for track_id in self.VIOLIN_GROUP.keys():
-            self.target_volumes[track_id] = 1.0 if 'violin' in self.activated_groups else 0.0
-
-        # 单簧管组
-        for track_id in self.CLARINET_GROUP.keys():
-            self.target_volumes[track_id] = 1.0 if 'clarinet' in self.activated_groups else 0.0
-
-        # 钢琴组
-        for track_id in self.PIANO_GROUP.keys():
-            self.target_volumes[track_id] = 1.0 if 'piano' in self.activated_groups else 0.0
-
-        # 鼓组
-        for track_id in self.DRUM_GROUP.keys():
-            self.target_volumes[track_id] = 1.0 if 'drum' in self.activated_groups else 0.0
-
-        # 小号组
-        for track_id in self.TRUMPET_GROUP.keys():
-            self.target_volumes[track_id] = 1.0 if 'trumpet' in self.activated_groups else 0.0
-
-    def _transition_to_state(self, new_state: PlaybackState):
-        """状态转换处理"""
-        old_state = self.current_state
-        self.previous_state = old_state
-        self.current_state = new_state
-
-        print(f"🔄 状态: {old_state.value} → {new_state.value}")
-
-        if new_state == PlaybackState.NO_PERSON:
-            # 人消失 - 清除所有激活组
-            self.activated_groups.clear()
-            self._pause_all_tracks()
-
-        elif new_state == PlaybackState.PERSON_DETECTED:
-            # 人出现 - 恢复并播放主旋律
-            self._resume_if_paused()
-            self._play_main_melody()
-
-    def _pause_all_tracks(self):
-        """
-        暂停所有音轨
-        State 1: NO_PERSON
-        """
-        print("⏸️ 暂停所有音轨")
-
-        # 记录暂停开始时间
-        if self.current_pause_start is None:
-            self.current_pause_start = time.time()
-
-        # 音量渐变到0（不立即停止播放，保持位置）
-        for track_id in range(1, 12):
-            self.target_volumes[track_id] = 0.0
-
-    def _resume_if_paused(self):
-        """如果当前处于暂停状态，则恢复播放"""
-        if self.previous_state == PlaybackState.NO_PERSON and self.current_pause_start:
-            # 累计暂停时间
-            current_time = time.time()
-            pause_duration = current_time - self.current_pause_start
-            self.total_pause_duration += pause_duration
-            self.current_pause_start = None
-
-            print(f"▶️ 从暂停恢复 (暂停了 {pause_duration:.1f}秒)")
-
-            # 如果会话尚未开始，现在开始
-            if not self.session_start_time:
-                self._start_playback_session()
-
-            # 确保所有音轨在播放中（即使音量为0）
-            self._ensure_tracks_playing()
-
-    def _start_playback_session(self):
-        """开始播放会话"""
-        print("🔄 启动播放会话")
-        self.session_start_time = time.time()
-        self.master_playing = True
-
-        # 启动所有音轨（静音状态）
-        for track_id in self.audio_sounds.keys():
-            try:
-                self.audio_sounds[track_id].set_volume(0.0)
-                self.audio_channels[track_id].play(self.audio_sounds[track_id], loops=-1)
-                self.playing_tracks.add(track_id)
-            except Exception as e:
-                print(f"❌ 启动音轨 {track_id} 失败: {e}")
-
-        print("✅ 播放会话已开始")
-
-    def _ensure_tracks_playing(self):
-        """确保所有音轨在播放中"""
-        for track_id in self.audio_sounds.keys():
-            if track_id not in self.playing_tracks:
-                try:
-                    self.audio_sounds[track_id].set_volume(0.0)
-                    self.audio_channels[track_id].play(self.audio_sounds[track_id], loops=-1)
-                    self.playing_tracks.add(track_id)
-                except Exception as e:
-                    print(f"❌ 启动音轨 {track_id} 失败: {e}")
-
-    def _play_main_melody(self):
-        """播放主旋律（violin_in_E 始终100%）"""
-        for track_id in self.MAIN_MELODY.keys():
-            self.target_volumes[track_id] = 1.0
-
-    def manual_pause_resume(self):
-        """手动暂停/恢复（用于调试或手动控制）"""
-        if self.current_state != PlaybackState.NO_PERSON:
-            # 手动进入暂停状态
-            self._transition_to_state(PlaybackState.NO_PERSON)
-            print("⏸️ 手动暂停")
-        else:
-            # 手动恢复到有人状态
-            self._transition_to_state(PlaybackState.PERSON_DETECTED)
-            print("▶️ 手动恢复")
-
-    def pause_all(self):
-        """暂停所有音轨（外部调用接口）"""
-        self._transition_to_state(PlaybackState.NO_PERSON)
-        print("⏸️ 手动暂停所有音轨")
-
-    def resume_all(self):
-        """恢复所有音轨（外部调用接口）"""
-        # 恢复到有人状态
-        self._transition_to_state(PlaybackState.PERSON_DETECTED)
-        print("▶️ 手动恢复所有音轨")
-
-    def reset_position(self):
-        """重置播放位置"""
-        print("🔄 重置播放位置")
-
-        # 重置时间跟踪
-        self.session_start_time = time.time()
-        self.total_pause_duration = 0.0
-        self.current_pause_start = None
-
-        # 停止所有当前播放
-        for track_id in list(self.playing_tracks):
-            try:
-                self.audio_channels[track_id].stop()
-            except:
-                pass
-
-        self.playing_tracks.clear()
-
-        # 重新启动所有音轨
-        for track_id in self.audio_sounds.keys():
-            try:
-                self.audio_sounds[track_id].set_volume(0.0)
-                self.audio_channels[track_id].play(self.audio_sounds[track_id], loops=-1)
-                self.playing_tracks.add(track_id)
-            except Exception as e:
-                print(f"❌ 重启音轨 {track_id} 失败: {e}")
-
-        # 清除所有音量，等待姿态检测
-        for track_id in range(1, 12):
-            self.target_volumes[track_id] = 0.0
-
-        print("✅ 播放位置已重置")
-
-    def get_status_info(self) -> dict:
-        """
-        获取当前状态信息
+            track_mapping: Dictionary mapping track names to file paths
 
         Returns:
-            dict: 包含所有状态信息的字典
+            Number of successfully loaded tracks
         """
-        current_pos = self.get_current_position()
+        loaded_count = 0
+        for track_name, file_path in track_mapping.items():
+            if self.load_track(track_name, file_path):
+                loaded_count += 1
+        return loaded_count
 
-        # 获取当前正在播放的音轨
-        playing_tracks_list = [
-            track_id for track_id, vol in self.target_volumes.items()
-            if vol > 0.01
-        ]
+    def set_target_volume(self, track_name: str, volume: float):
+        """
+        Set the target volume for a track (smooth transition).
 
+        Args:
+            track_name: Name of the track
+            volume: Target volume (0.0 to 1.0)
+        """
+        if track_name not in self.tracks:
+            logger.warning(f"Track not found: {track_name}")
+            return
+
+        volume = max(0.0, min(1.0, volume))  # Clamp to valid range
+        self.tracks[track_name].target_volume = volume
+        logger.debug(f"Set target volume for {track_name}: {volume:.2f}")
+
+    def set_immediate_volume(self, track_name: str, volume: float):
+        """
+        Set the volume immediately (no transition).
+
+        Args:
+            track_name: Name of the track
+            volume: Volume level (0.0 to 1.0)
+        """
+        if track_name not in self.tracks:
+            logger.warning(f"Track not found: {track_name}")
+            return
+
+        volume = max(0.0, min(1.0, volume))
+        self.tracks[track_name].current_volume = volume
+        self.tracks[track_name].target_volume = volume
+
+    def play_all_tracks(self):
+        """Start synchronized playback of all tracks."""
+        if self.is_playing and not self.is_paused:
+            logger.warning("Tracks are already playing")
+            return
+
+        with self._playback_lock:
+            if self.is_paused:
+                # Resume from pause
+                self._resume_playback()
+            else:
+                # Start fresh playback
+                self._start_playback()
+
+    def pause_all_tracks(self):
+        """Pause all tracks."""
+        if not self.is_playing or self.is_paused:
+            logger.warning("No tracks are playing")
+            return
+
+        with self._playback_lock:
+            self.is_paused = True
+            self._pause_time = time.time()
+
+            # Stop all play objects
+            for track in self.tracks.values():
+                if track.play_obj and track.play_obj.is_playing():
+                    track.play_obj.stop()
+                    track.play_obj = None
+
+            logger.info("Paused all tracks")
+
+    def stop_all_tracks(self):
+        """Stop all tracks and reset playback."""
+        with self._playback_lock:
+            self.is_playing = False
+            self.is_paused = False
+
+            # Stop all play objects
+            for track in self.tracks.values():
+                if track.play_obj and track.play_obj.is_playing():
+                    track.play_obj.stop()
+                    track.play_obj = None
+
+            # Reset timing
+            self._start_time = None
+            self._pause_time = None
+            self._total_pause_duration = 0.0
+
+            logger.info("Stopped all tracks")
+
+    def _start_playback(self):
+        """Start fresh playback of all tracks."""
+        self.is_playing = True
+        self.is_paused = False
+        self._start_time = time.time()
+        self._total_pause_duration = 0.0
+
+        # Start volume control thread
+        self._stop_event.clear()
+        self._volume_control_thread = threading.Thread(
+            target=self._volume_control_loop,
+            daemon=True
+        )
+        self._volume_control_thread.start()
+
+        # Start playback for each track
+        for track in self.tracks.values():
+            self._start_track_playback(track)
+
+        logger.info("Started playback of all tracks")
+
+    def _resume_playback(self):
+        """Resume playback from pause."""
+        if self._pause_time:
+            self._total_pause_duration += time.time() - self._pause_time
+            self._pause_time = None
+
+        self.is_paused = False
+
+        # Calculate current position
+        elapsed_time = self._get_elapsed_playback_time()
+
+        # Resume each track from current position
+        for track in self.tracks.values():
+            self._start_track_playback(track, start_position_ms=elapsed_time)
+
+        logger.info(f"Resumed playback from {elapsed_time:.2f}ms")
+
+    def _start_track_playback(self, track: AudioTrack, start_position_ms: float = 0.0):
+        """
+        Start playback for a single track.
+
+        Args:
+            track: AudioTrack object
+            start_position_ms: Starting position in milliseconds
+        """
+        if track.audio_segment is None:
+            return
+
+        # Apply current volume
+        volume_db = self._volume_to_db(track.current_volume)
+
+        # Apply track-specific volume boost if configured
+        boost_db = config.TRACK_VOLUME_BOOST.get(track.name, 0.0)
+        total_volume_db = volume_db + boost_db
+
+        adjusted_audio = track.audio_segment + total_volume_db
+
+        # Seek to start position if needed
+        if start_position_ms > 0:
+            adjusted_audio = adjusted_audio[int(start_position_ms):]
+
+        # Start playback in background thread
+        def play_track():
+            try:
+                track.play_obj = _play_with_simpleaudio(adjusted_audio)
+            except Exception as e:
+                logger.error(f"Error playing track {track.name}: {e}")
+
+        play_thread = threading.Thread(target=play_track, daemon=True)
+        play_thread.start()
+
+    def _volume_control_loop(self):
+        """Background thread that smoothly adjusts volumes."""
+        while not self._stop_event.is_set():
+            if self.is_playing and not self.is_paused:
+                self._update_all_volumes()
+            time.sleep(self.update_rate)
+
+    def _update_all_volumes(self):
+        """Update volumes for all tracks (smooth transition)."""
+        volume_change = self.volume_transition_speed * self.update_rate
+
+        for track in self.tracks.values():
+            if track.current_volume != track.target_volume:
+                # Move towards target volume
+                if track.current_volume < track.target_volume:
+                    track.current_volume = min(
+                        track.target_volume,
+                        track.current_volume + volume_change
+                    )
+                else:
+                    track.current_volume = max(
+                        track.target_volume,
+                        track.current_volume - volume_change
+                    )
+
+                # Restart track with new volume if significant change
+                if abs(track.current_volume - track.target_volume) > 0.01:
+                    self._restart_track_with_volume(track)
+
+    def _restart_track_with_volume(self, track: AudioTrack):
+        """
+        Restart a track with updated volume.
+
+        Args:
+            track: AudioTrack to restart
+        """
+        # Stop current playback
+        if track.play_obj and track.play_obj.is_playing():
+            track.play_obj.stop()
+
+        # Get current playback position
+        elapsed_time = self._get_elapsed_playback_time()
+
+        # Restart with new volume
+        self._start_track_playback(track, start_position_ms=elapsed_time)
+
+    def _get_elapsed_playback_time(self) -> float:
+        """
+        Get elapsed playback time in milliseconds.
+
+        Returns:
+            Elapsed time in milliseconds
+        """
+        if not self._start_time:
+            return 0.0
+
+        if self.is_paused and self._pause_time:
+            elapsed = (self._pause_time - self._start_time - self._total_pause_duration) * 1000
+        else:
+            elapsed = (time.time() - self._start_time - self._total_pause_duration) * 1000
+
+        return max(0.0, elapsed)
+
+    @staticmethod
+    def _volume_to_db(volume: float) -> float:
+        """
+        Convert linear volume (0.0-1.0) to decibels.
+
+        Args:
+            volume: Linear volume (0.0-1.0)
+
+        Returns:
+            Volume in decibels (dB)
+        """
+        if volume <= 0.0:
+            return -60.0  # Effectively silent
+        elif volume >= 1.0:
+            return 0.0  # No attenuation
+
+        # Logarithmic scaling for perceptual volume
+        return 20 * (volume - 1) * 3  # ~-60dB to 0dB range
+
+    def get_track_info(self, track_name: str) -> Optional[Dict]:
+        """
+        Get information about a track.
+
+        Args:
+            track_name: Name of the track
+
+        Returns:
+            Dictionary with track information, or None if not found
+        """
+        if track_name not in self.tracks:
+            return None
+
+        track = self.tracks[track_name]
         return {
-            'enabled': self.enabled,
-            'current_state': self.current_state.value,
-            'activated_groups': list(self.activated_groups),
-            'master_playing': self.master_playing,
-            'playing_tracks': playing_tracks_list,
-            'volumes': self.audio_volumes.copy(),
-            'target_volumes': self.target_volumes.copy(),
-            'playback_position': current_pos,
-            'current_position': current_pos,  # 兼容性
-            'audio_lengths': self.audio_lengths.copy(),
-            'total_pause_duration': self.total_pause_duration,
-            'session_start_time': self.session_start_time
+            "name": track.name,
+            "file_path": track.file_path,
+            "current_volume": track.current_volume,
+            "target_volume": track.target_volume,
+            "is_playing": track.play_obj is not None and track.play_obj.is_playing() if track.play_obj else False
         }
 
-    def cleanup(self):
-        """清理资源"""
-        print("🧹 清理 E Major 音频控制器...")
+    def close(self):
+        """Release resources and stop playback."""
+        self._stop_event.set()
+        self.stop_all_tracks()
 
-        # 停止渐变线程
-        self.fade_thread_running = False
+        if self._volume_control_thread and self._volume_control_thread.is_alive():
+            self._volume_control_thread.join(timeout=1.0)
 
-        # 停止所有播放
-        for track_id in list(self.playing_tracks):
-            try:
-                self.audio_channels[track_id].stop()
-            except:
-                pass
+        logger.info("Audio controller closed")
 
-        self.playing_tracks.clear()
-        self.master_playing = False
-        self.enabled = False
+    def __enter__(self):
+        """Context manager entry."""
+        return self
 
-        print("✅ E Major 音频控制器已清理")
-
-
-# 使用示例
-if __name__ == "__main__":
-    # 初始化 pygame.mixer
-    pygame.mixer.init(frequency=44100, size=-16, channels=2, buffer=512)
-
-    # 创建控制器
-    controller = EMajorAudioController()
-
-    # 初始化
-    if controller.initialize():
-        print("\n" + "="*60)
-        print("E Major 音频控制器测试")
-        print("="*60)
-
-        try:
-            # 模拟状态转换
-            print("\n1. 模拟检测到人（无乐器）")
-            controller.update_from_instruments(person_detected=True, detected_instruments={})
-            time.sleep(3)
-
-            print("\n2. 模拟检测到小提琴")
-            controller.update_from_instruments(person_detected=True, detected_instruments={'violin': 0.8})
-            time.sleep(3)
-
-            print("\n3. 模拟检测到钢琴")
-            controller.update_from_instruments(person_detected=True, detected_instruments={'piano': 0.7})
-            time.sleep(3)
-
-            print("\n4. 模拟检测到小号和鼓")
-            controller.update_from_instruments(person_detected=True, detected_instruments={'trumpet': 0.85, 'drum': 0.9})
-            time.sleep(3)
-
-            print("\n5. 模拟人消失")
-            controller.update_from_instruments(person_detected=False, detected_instruments={})
-            time.sleep(2)
-
-            print("\n6. 获取状态信息")
-            status = controller.get_status_info()
-            print(f"当前状态: {status['current_state']}")
-            print(f"激活组: {status['activated_groups']}")
-            print(f"播放位置: {status['playback_position']:.2f}秒")
-            print(f"正在播放的音轨: {status['playing_tracks']}")
-
-        except KeyboardInterrupt:
-            print("\n用户中断")
-        finally:
-            controller.cleanup()
-    else:
-        print("❌ 控制器初始化失败")
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        """Context manager exit."""
+        self.close()
