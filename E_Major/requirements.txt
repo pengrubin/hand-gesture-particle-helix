@@ -1,0 +1,11 @@
+# E_Major 五乐器姿态识别系统 - 依赖包
+# 支持平台：Windows 10+, macOS 10.15+, Linux
+
+# 核心依赖
+opencv-python>=4.8.0
+mediapipe>=0.10.0
+numpy>=1.24.0
+pygame>=2.5.0
+
+# 可选：性能监控和优化
+# psutil>=5.9.0  # 用于系统监控（可选）
