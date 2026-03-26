@@ -11,23 +11,71 @@ import numpy as np
 import os
 import platform
 import sys
+import atexit
+import signal
 
-# 优先使用跨平台手势检测器，回退到原版检测器
-try:
-    from cross_platform_gesture_detector import CrossPlatformGestureDetector as GestureDetector
-    print("✓ 使用跨平台手势检测器")
-except ImportError:
-    from gesture_detector import GestureDetector
-    print("⚠️ 使用标准手势检测器（可能存在兼容性问题）")
+# 全局应用实例，用于信号处理和atexit清理
+_app_instance = None
+_cleanup_done = False
+
+def _emergency_cleanup():
+    """紧急清理函数 - 确保摄像头被释放"""
+    global _app_instance, _cleanup_done
+    if _cleanup_done:
+        return
+    _cleanup_done = True
+
+    print("\n[紧急清理] 正在释放资源...")
+
+    if _app_instance is not None:
+        try:
+            _app_instance.cleanup()
+        except Exception as e:
+            print(f"[紧急清理] cleanup异常: {e}")
+
+    # 强制释放所有OpenCV资源
+    try:
+        cv2.destroyAllWindows()
+    except:
+        pass
+
+    print("[紧急清理] 完成")
+
+def _signal_handler(signum, frame):
+    """信号处理器 - 处理Ctrl+C等信号"""
+    signal_names = {signal.SIGINT: 'SIGINT', signal.SIGTERM: 'SIGTERM'}
+    sig_name = signal_names.get(signum, str(signum))
+    print(f"\n收到信号 {sig_name}，正在安全退出...")
+
+    global _app_instance
+    if _app_instance is not None:
+        _app_instance.is_running = False
+
+    _emergency_cleanup()
+    sys.exit(0)
+
+# 注册信号处理器
+signal.signal(signal.SIGINT, _signal_handler)
+signal.signal(signal.SIGTERM, _signal_handler)
+
+# 注册atexit清理（程序正常退出或异常退出时调用）
+atexit.register(_emergency_cleanup)
+
+# 统一手势检测器（已合并所有功能）
+from gesture_detector import GestureDetector
+print("✓ 使用统一手势检测器")
 
 from render_engine import RenderEngine
 from particle_sphere_system import ParticleSphereSystem
-from hand_gesture_detector import HandGestureDetector
+from gesture_detector import GestureDetector as HandGestureDetector
 from realistic_audio_manager import RealisticAudioManager
 from audio_spectrum_analyzer import AudioSpectrumAnalyzer
 
 class GestureParticleApp:
     def __init__(self):
+        global _app_instance
+        _app_instance = self  # 注册全局实例用于紧急清理
+
         print("正在初始化手势粒子音频应用...")
         
         # 显示平台信息
@@ -605,48 +653,71 @@ class GestureParticleApp:
     
     def cleanup(self):
         """清理资源"""
+        global _cleanup_done
+
+        # 防止重复清理
+        if _cleanup_done:
+            return
+        _cleanup_done = True
+
         print("\n正在清理资源...")
-        
+
+        # 最重要：首先释放摄像头（避免占用）
+        try:
+            if hasattr(self, 'gesture_detector') and self.gesture_detector:
+                self.gesture_detector.stop_camera()
+                print("✓ 摄像头已停止")
+        except Exception as e:
+            print(f"⚠ 摄像头清理异常: {e}")
+
         # 清理音频资源
         try:
-            if hasattr(self, 'spectrum_analyzer'):
+            if hasattr(self, 'spectrum_analyzer') and self.spectrum_analyzer:
                 self.spectrum_analyzer.cleanup()
                 print("✓ 音频频谱分析器已清理")
-                
-            if hasattr(self, 'audio_manager'):
+        except Exception as e:
+            print(f"⚠ 频谱分析器清理异常: {e}")
+
+        try:
+            if hasattr(self, 'audio_manager') and self.audio_manager:
                 self.audio_manager.cleanup()
                 print("✓ 音频管理器已清理")
-            
+        except Exception as e:
+            print(f"⚠ 音频管理器清理异常: {e}")
+
+        try:
             pygame.mixer.quit()
             print("✓ 音频系统已清理")
-        except:
-            pass
-        
+        except Exception as e:
+            print(f"⚠ pygame.mixer清理异常: {e}")
+
+        # 清理渲染引擎
         try:
-            self.gesture_detector.stop_camera()
-            print("✓ 摄像头已停止")
-        except:
-            pass
-        
-        try:
-            self.render_engine.cleanup()
-            print("✓ 渲染引擎已清理")
-        except:
-            pass
-        
+            if hasattr(self, 'render_engine') and self.render_engine:
+                self.render_engine.cleanup()
+                print("✓ 渲染引擎已清理")
+        except Exception as e:
+            print(f"⚠ 渲染引擎清理异常: {e}")
+
+        # 清理OpenCV窗口
         try:
             cv2.destroyAllWindows()
+            # 给OpenCV一点时间完成窗口清理
+            cv2.waitKey(1)
             print("✓ OpenCV窗口已关闭")
-        except:
-            pass
-        
+        except Exception as e:
+            print(f"⚠ OpenCV清理异常: {e}")
+
         print("✓ 应用已完全退出")
 
 def main():
     """主函数"""
+    global _app_instance
+
     print("=== 手势控制粒子球形效果应用 ===")
     print("Python版本 - 无需TouchDesigner")
-    
+
+    app = None
     try:
         app = GestureParticleApp()
         app.start()
@@ -656,6 +727,10 @@ def main():
         print(f"应用错误: {e}")
         import traceback
         traceback.print_exc()
+    finally:
+        # 确保清理被调用
+        if app is not None:
+            app.cleanup()
 
 if __name__ == "__main__":
     main()

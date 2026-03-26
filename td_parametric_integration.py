@@ -14,7 +14,7 @@ from typing import Dict, List, Tuple, Optional, Any, Union
 from enum import Enum
 
 # Import existing modules
-from hand_gesture_detector import HandGestureDetector
+from gesture_detector import GestureDetector as HandGestureDetector
 from gesture_parametric_bridge import GestureParametricBridge, HandAssignment
 from parametric_equation_renderer import ParametricEquationRenderer
 

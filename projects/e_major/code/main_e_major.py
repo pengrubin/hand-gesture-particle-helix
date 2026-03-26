@@ -9,6 +9,8 @@ import cv2
 import logging
 import sys
 import time
+import atexit
+import signal
 from typing import Dict, Set
 from pathlib import Path
 
@@ -26,6 +28,50 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
+# 全局实例用于紧急清理
+_conductor_instance = None
+_cleanup_done = False
+
+def _emergency_cleanup():
+    """紧急清理函数 - 确保摄像头被释放"""
+    global _conductor_instance, _cleanup_done
+    if _cleanup_done:
+        return
+    _cleanup_done = True
+
+    logger.info("[紧急清理] 正在释放资源...")
+
+    if _conductor_instance is not None:
+        try:
+            _conductor_instance._cleanup()
+        except Exception as e:
+            logger.error(f"[紧急清理] 异常: {e}")
+
+    try:
+        cv2.destroyAllWindows()
+    except:
+        pass
+
+    logger.info("[紧急清理] 完成")
+
+def _signal_handler(signum, frame):
+    """信号处理器"""
+    signal_names = {signal.SIGINT: 'SIGINT', signal.SIGTERM: 'SIGTERM'}
+    sig_name = signal_names.get(signum, str(signum))
+    logger.info(f"收到信号 {sig_name}，正在安全退出...")
+
+    global _conductor_instance
+    if _conductor_instance is not None:
+        _conductor_instance.is_running = False
+
+    _emergency_cleanup()
+    sys.exit(0)
+
+# 注册信号处理器和atexit
+signal.signal(signal.SIGINT, _signal_handler)
+signal.signal(signal.SIGTERM, _signal_handler)
+atexit.register(_emergency_cleanup)
+
 
 class VirtualOrchestraConductor:
     """
@@ -37,6 +83,9 @@ class VirtualOrchestraConductor:
 
     def __init__(self):
         """Initialize the virtual orchestra conductor."""
+        global _conductor_instance
+        _conductor_instance = self  # 注册全局实例用于紧急清理
+
         logger.info("Initializing Virtual Orchestra Conductor...")
 
         # Validate audio files
@@ -453,32 +502,64 @@ class VirtualOrchestraConductor:
 
     def _cleanup(self):
         """Clean up resources."""
+        global _cleanup_done
+
+        # 防止重复清理
+        if _cleanup_done:
+            return
+        _cleanup_done = True
+
         logger.info("Cleaning up...")
 
-        # Release camera
-        if self.camera.isOpened():
-            self.camera.release()
+        # 最重要：首先释放摄像头
+        try:
+            if hasattr(self, 'camera') and self.camera and self.camera.isOpened():
+                self.camera.release()
+                logger.info("Camera released")
+        except Exception as e:
+            logger.error(f"Camera release error: {e}")
 
         # Close audio controller
-        self.audio_controller.close()
+        try:
+            if hasattr(self, 'audio_controller') and self.audio_controller:
+                self.audio_controller.close()
+                logger.info("Audio controller closed")
+        except Exception as e:
+            logger.error(f"Audio controller close error: {e}")
 
         # Close gesture detector
-        self.gesture_detector.close()
+        try:
+            if hasattr(self, 'gesture_detector') and self.gesture_detector:
+                self.gesture_detector.close()
+                logger.info("Gesture detector closed")
+        except Exception as e:
+            logger.error(f"Gesture detector close error: {e}")
 
         # Close all windows
-        cv2.destroyAllWindows()
+        try:
+            cv2.destroyAllWindows()
+            cv2.waitKey(1)
+            logger.info("OpenCV windows closed")
+        except Exception as e:
+            logger.error(f"OpenCV close error: {e}")
 
         logger.info("Cleanup complete")
 
 
 def main():
     """Main entry point."""
+    conductor = None
     try:
         conductor = VirtualOrchestraConductor()
         conductor.run()
+    except KeyboardInterrupt:
+        logger.info("User interrupted")
     except Exception as e:
         logger.exception(f"Fatal error: {e}")
-        sys.exit(1)
+    finally:
+        # 确保清理被调用
+        if conductor is not None:
+            conductor._cleanup()
 
 
 if __name__ == "__main__":

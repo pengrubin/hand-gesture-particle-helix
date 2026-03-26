@@ -32,7 +32,7 @@ import json
 import os
 
 # 导入所有优化组件
-from optimized_gesture_detector import OptimizedHandGestureDetector
+from gesture_detector import GestureDetector as OptimizedHandGestureDetector
 from optimized_audio_controller import OptimizedAudioController, create_optimized_audio_controller
 from memory_optimizer import MemoryOptimizer, get_memory_optimizer
 from real_time_monitor import RealTimeMonitor, get_performance_monitor

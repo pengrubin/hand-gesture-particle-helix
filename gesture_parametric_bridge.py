@@ -13,7 +13,7 @@ from typing import Dict, Optional, Tuple, List, Any
 from enum import Enum
 import time
 
-from hand_gesture_detector import HandGestureDetector
+from gesture_detector import GestureDetector as HandGestureDetector
 from gesture_radius_mapper import GestureToRadiusMapper, HandState
 from parametric_equation_renderer import ParametricEquationRenderer
 
