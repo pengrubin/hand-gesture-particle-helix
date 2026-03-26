@@ -261,14 +261,31 @@ class ParticleSystem:
         
         return geometry_data
 
-# 全局粒子系统实例
-if not hasattr(op, 'particle_system'):
-    op.particle_system = ParticleSystem()
+# 全局粒子系统实例 (仅在 TouchDesigner 环境中初始化)
+_standalone_particle_system = None
+
+try:
+    # TouchDesigner 环境
+    if not hasattr(op, 'particle_system'):
+        op.particle_system = ParticleSystem()
+except NameError:
+    # 非 TouchDesigner 环境，使用独立实例
+    _standalone_particle_system = ParticleSystem()
+
+def _get_particle_system():
+    """获取粒子系统实例（兼容 TD 和独立运行）"""
+    try:
+        return op.particle_system
+    except NameError:
+        global _standalone_particle_system
+        if _standalone_particle_system is None:
+            _standalone_particle_system = ParticleSystem()
+        return _standalone_particle_system
 
 # TouchDesigner接口函数
 def update_particle_system(gesture_params, dt=0.016):
     """更新粒子系统"""
-    system = op.particle_system
+    system = _get_particle_system()
     
     # 更新系统参数
     if gesture_params:
@@ -287,7 +304,7 @@ def update_particle_system(gesture_params, dt=0.016):
 
 def get_particle_data_for_gpu():
     """获取GPU粒子数据"""
-    system = op.particle_system
+    system = _get_particle_system()
     return {
         'positions': system.get_particle_positions(),
         'colors': system.get_particle_colors(),
@@ -296,7 +313,7 @@ def get_particle_data_for_gpu():
 
 def get_active_particle_count():
     """获取活跃粒子数量"""
-    system = op.particle_system
+    system = _get_particle_system()
     return sum(1 for p in system.particles if p['life'] > 0)
 
 # GLSL着色器辅助函数（在GLSL TOP中使用）
