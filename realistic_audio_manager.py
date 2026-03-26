@@ -37,9 +37,15 @@ class RealisticAudioManager:
         Args:
             audio_directory: 音频文件所在目录，默认为当前脚本目录
         """
-        # 设置音频文件路径
+        # 设置音频文件路径（优先检查 data/audio/ 目录）
         if audio_directory is None:
-            self.audio_directory = Path(__file__).parent
+            # 优先使用 data/audio/ 目录
+            data_audio_dir = Path(__file__).parent / "data" / "audio"
+            if data_audio_dir.exists():
+                self.audio_directory = data_audio_dir
+            else:
+                # 回退到根目录（向后兼容）
+                self.audio_directory = Path(__file__).parent
         else:
             self.audio_directory = Path(audio_directory)
 
