@@ -1,0 +1,9 @@
+node_modules/
+dist/
+.DS_Store
+.vite/
+*.log
+# audio stems are sourced from ../data/audio at dev time
+public/audio/*.mp3
+# MediaPipe model is fetched by scripts/download-model.mjs at dev time
+public/mediapipe/*.task

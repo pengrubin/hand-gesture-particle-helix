@@ -182,6 +182,14 @@ ehthumbs_vista.db
 *.toe
 *.tox
 *.backup
+# toeexpand outputs (binary .toe expanded for inspection, can be huge)
+*.toe.dir/
+*.toe.toc
+
+# Node / fugue-web build outputs
+node_modules/
+fugue-web/dist/
+fugue-web/.vite/
 
 # Runtime generated files
 screenshots/

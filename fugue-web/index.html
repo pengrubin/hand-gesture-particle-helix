@@ -1,0 +1,166 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+    <meta name="theme-color" content="#000000" />
+    <title>Fugue Hands</title>
+    <style>
+      *, *::before, *::after { box-sizing: border-box; }
+      html, body {
+        margin: 0;
+        height: 100%;
+        background: #000;
+        color: #fff;
+        font-family: ui-monospace, "SF Mono", Menlo, monospace;
+        overflow: hidden;
+        -webkit-user-select: none;
+        user-select: none;
+      }
+
+      /* Three.js canvas is injected as the first child of <body> with
+         z-index: 0. Everything else here sits on top. */
+
+      #app {
+        position: fixed; inset: 0;
+        display: grid; place-items: center;
+        z-index: 10;
+      }
+      #start-button {
+        padding: 16px 40px;
+        font: inherit;
+        font-size: 16px;
+        letter-spacing: 0.12em;
+        color: #fff;
+        background: rgba(0, 0, 0, 0.6);
+        border: 1px solid #fff;
+        border-radius: 4px;
+        cursor: pointer;
+        transition: background 0.15s ease;
+        backdrop-filter: blur(4px);
+        -webkit-backdrop-filter: blur(4px);
+      }
+      #start-button:hover { background: rgba(255, 255, 255, 0.12); }
+      #start-button:disabled { opacity: 0.5; cursor: not-allowed; }
+
+      #hud {
+        position: fixed;
+        right: 16px;
+        bottom: 16px;
+        width: 320px;
+        padding: 0;
+        background: rgba(0, 0, 0, 0.7);
+        border: 1px solid #2a2a2a;
+        border-radius: 8px;
+        font-size: 11px;
+        line-height: 1.5;
+        backdrop-filter: blur(10px);
+        -webkit-backdrop-filter: blur(10px);
+        display: none;
+        overflow: hidden;
+        z-index: 20;
+      }
+      #hud.visible { display: block; }
+
+      #camera-pip {
+        position: relative;
+        width: 100%;
+        aspect-ratio: 4 / 3;
+        background: #050505;
+        border-bottom: 1px solid #1a1a1a;
+        overflow: hidden;
+      }
+
+      #hud-body { padding: 10px 14px 12px; }
+
+      .hud-row { display: flex; justify-content: space-between; gap: 8px; }
+      .hud-label {
+        color: #666;
+        letter-spacing: 0.1em;
+        text-transform: uppercase;
+        font-size: 10px;
+      }
+      .hud-label.left { color: #5fff8c; }
+      .hud-label.right { color: #5fb8ff; }
+      .hud-value { color: #fff; font-variant-numeric: tabular-nums; }
+
+      .track-lights { display: flex; gap: 6px; margin-top: 8px; }
+      .track-light {
+        flex: 1;
+        padding: 4px 0;
+        text-align: center;
+        border: 1px solid #2a2a2a;
+        border-radius: 3px;
+        font-size: 9px;
+        letter-spacing: 0.15em;
+        color: #444;
+      }
+      .track-light.on { color: #000; border-color: #fff; background: #fff; }
+
+      .hud-hint {
+        margin-top: 10px;
+        padding-top: 8px;
+        border-top: 1px solid #1a1a1a;
+        color: #555;
+        font-size: 10px;
+      }
+
+      #hud-error {
+        margin-top: 8px;
+        padding: 6px 8px;
+        background: rgba(255, 80, 80, 0.1);
+        border: 1px solid #642828;
+        border-radius: 3px;
+        color: #ff8c8c;
+        font-size: 10px;
+        display: none;
+      }
+      #hud-error.visible { display: block; }
+    </style>
+  </head>
+  <body>
+    <div id="app">
+      <button id="start-button" type="button">Click to start</button>
+    </div>
+    <div id="hud">
+      <div id="camera-pip"></div>
+      <div id="hud-body">
+        <div class="hud-row">
+          <span class="hud-label">Audio</span>
+          <span class="hud-value" id="hud-status">idle</span>
+        </div>
+        <div class="hud-row">
+          <span class="hud-label left">Left hand</span>
+          <span class="hud-value" id="hud-left">—</span>
+        </div>
+        <div class="hud-row">
+          <span class="hud-label right">Right hand</span>
+          <span class="hud-value" id="hud-right">—</span>
+        </div>
+        <div class="hud-row">
+          <span class="hud-label">Active</span>
+          <span class="hud-value" id="hud-active">—</span>
+        </div>
+        <div class="track-lights">
+          <div class="track-light" id="light-violin">VIOLIN</div>
+          <div class="track-light" id="light-lute">LUTE</div>
+          <div class="track-light" id="light-organ">ORGAN</div>
+        </div>
+        <div class="hud-row" style="margin-top: 10px">
+          <span class="hud-label">FPS</span>
+          <span class="hud-value" id="hud-fps">—</span>
+        </div>
+        <div class="hud-row">
+          <span class="hud-label">Quality</span>
+          <span class="hud-value" id="hud-tier">—</span>
+        </div>
+        <div class="hud-hint">
+          Hold up 1 / 2 / 3 fingers, or open hand for all three.<br />
+          Debug: Shift + 1 / 2 / 3 / 5 / 0
+        </div>
+        <div id="hud-error"></div>
+      </div>
+    </div>
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>
