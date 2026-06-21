@@ -116,6 +116,19 @@
         display: none;
       }
       #hud-error.visible { display: block; }
+
+      /* Mobile / narrow portrait: the fixed 320px HUD covers most of the
+         centered 3D sphere on a phone. Shrink it and tuck it into the corner
+         (respecting iOS safe areas) so the visualisation stays the main view. */
+      @media (max-width: 600px), (orientation: portrait) {
+        #hud {
+          width: min(46vw, 190px);
+          right: max(10px, env(safe-area-inset-right, 0px));
+          bottom: max(10px, env(safe-area-inset-bottom, 0px));
+          font-size: 10px;
+        }
+        .hud-hint { display: none; }
+      }
     </style>
   </head>
   <body>
