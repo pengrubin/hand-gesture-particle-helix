@@ -1,7 +1,6 @@
 {
   // Worker 名称：必须与 Cloudflare 控制台里 Workers 项目的名字一致。
-  // 若不一致，请改这里或在控制台改项目名。
-  "name": "fugue-hands",
+  "name": "hand-gesture-particle-helix",
   "compatibility_date": "2024-11-01",
   // 纯静态站点：没有服务端 Worker 代码，只把 Vite 产物目录作为静态资源。
   "assets": {
