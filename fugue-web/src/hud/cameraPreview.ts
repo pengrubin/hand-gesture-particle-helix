@@ -54,6 +54,13 @@ export function mountCameraPreview(video: HTMLVideoElement): void {
     const h = video.videoHeight || 480;
     if (canvas.width !== w) canvas.width = w;
     if (canvas.height !== h) canvas.height = h;
+    // Match the PIP box to the camera's real aspect ratio. The video uses
+    // object-fit: cover while the overlay canvas is stretched to the box;
+    // if the box aspect differs from the camera's (common on phones, whose
+    // front cameras rarely honour the requested 4:3), the two scale
+    // differently and the skeleton drifts off the hand. Pinning the box to
+    // the real aspect makes both scale identically.
+    container.style.aspectRatio = `${w} / ${h}`;
   };
   video.addEventListener('loadedmetadata', resize);
   resize();

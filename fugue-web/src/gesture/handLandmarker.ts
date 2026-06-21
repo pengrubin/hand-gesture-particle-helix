@@ -34,9 +34,9 @@ export async function createHandLandmarker(): Promise<HandLandmarker> {
 /**
  * Run one detection on a video frame. Returns at most 2 detections.
  *
- * NOTE on handedness: the camera is front-facing (selfie). MediaPipe reports
- * handedness from the camera's POV, not the user's. We flip it here so the
- * 'Left' / 'Right' labels match the user's natural left/right.
+ * NOTE on handedness: we pass MediaPipe's label through unchanged. A previous
+ * unconditional selfie flip behaved inconsistently across platforms (it
+ * reversed Left/Right on iOS WebKit), so it was removed.
  */
 export function detectFrame(
   lm: HandLandmarker,
@@ -52,8 +52,10 @@ export function detectFrame(
     if (!lms || !handCategories || handCategories.length === 0) continue;
     const rawLabel = handCategories[0]?.categoryName;
     if (rawLabel !== 'Left' && rawLabel !== 'Right') continue;
-    // Flip for selfie camera convention.
-    const handedness: Handedness = rawLabel === 'Left' ? 'Right' : 'Left';
+    // Use MediaPipe's label directly. An earlier "selfie flip" assumed the
+    // raw front-camera frame was un-mirrored, but that varies by platform
+    // (desktop vs iOS WebKit), which flipped Left/Right on mobile.
+    const handedness: Handedness = rawLabel;
     const landmarks: Landmark[] = lms.map((p) => ({ x: p.x, y: p.y, z: p.z }));
     out.push({ handedness, landmarks });
   }
