@@ -25,7 +25,15 @@ for (const [srcName, dstName] of Object.entries(FILES)) {
   const srcPath = resolve(SRC_DIR, srcName);
   const dstPath = resolve(DST_DIR, dstName);
 
+  // When the source stem is absent (e.g. CI/Cloudflare builds where the
+  // ../data/audio originals aren't checked in), fall back to a destination
+  // file that's already committed under public/audio/. Only treat as a hard
+  // failure if neither source nor a usable destination exists.
   if (!existsSync(srcPath)) {
+    if (existsSync(dstPath) && statSync(dstPath).size > 0) {
+      skipped += 1;
+      continue;
+    }
     missing.push(srcName);
     continue;
   }

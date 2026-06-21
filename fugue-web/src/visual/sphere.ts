@@ -2,7 +2,7 @@
 // using 3D simplex noise. Uniforms are driven each frame from the audio
 // analyser bands.
 
-import { Mesh, ShaderMaterial, SphereGeometry } from 'three';
+import { Mesh, ShaderMaterial, SphereGeometry, type IUniform } from 'three';
 import sphereVert from './shaders/sphere.vert.glsl?raw';
 import sphereFrag from './shaders/sphere.frag.glsl?raw';
 
@@ -29,7 +29,9 @@ export function createSphere(segments = 256): SphereBundle {
   };
 
   const material = new ShaderMaterial({
-    uniforms,
+    // SphereUniforms has named keys, not the index signature ShaderMaterial
+    // expects; the cast keeps the strongly-typed object for frame updates.
+    uniforms: uniforms as unknown as { [uniform: string]: IUniform },
     vertexShader: sphereVert,
     fragmentShader: sphereFrag,
   });
