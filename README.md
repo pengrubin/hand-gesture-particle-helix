@@ -8,6 +8,12 @@ A pure Python implementation featuring 18 different wave shapes and 9 spiral str
 
 ▶️ **[Watch the demo on YouTube](https://youtu.be/OJ7j9jlB0dE)**
 
+## 🌐 Try it online
+
+**https://hand.pengrubin.com/** — a lightweight browser version you can open on any phone or laptop with a camera.
+
+It keeps only the core idea: raise fingers to switch the three voices of the fugue (violin / lute / organ) on and off. The heavy GPU particle patterns and the EEG headset used in the full installation are left out. Source lives in [`fugue-web/`](fugue-web/).
+
 ## ✨ Features
 
 ### 🎵 NEW: Advanced Audio Control with Resume Playback

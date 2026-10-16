@@ -8,7 +8,7 @@ Three generations of the same idea, a Bach "Fugue in G Trio" (violin / lute / or
 
 | Layer | Where | Status |
 |---|---|---|
-| **fugue-web** browser port (TypeScript, Vite, Three.js, MediaPipe Tasks Vision, Web Audio) | `fugue-web/` | Active. All recent commits touch this. Deployed to Cloudflare Workers. |
+| **fugue-web** browser port (TypeScript, Vite, Three.js, MediaPipe Tasks Vision, Web Audio) | `fugue-web/` | Active. All recent commits touch this. Live at https://hand.pengrubin.com/ (Cloudflare Workers). Intentionally minimal: gesture → voice switching only, no heavy GPU patterns, no EEG. |
 | Python desktop app (OpenCV + MediaPipe + pygame + PyOpenGL) | repo root `*.py`, `core/`, `data/` | Maintained but older. `python run.py`. |
 | E_Major full-body pose → 11-track orchestra | `projects/e_major/` | Self-contained sub-project with its own `run.py`, requirements and `hand_gesture_detector.py`. Do not confuse with the root modules of the same name. |
 
