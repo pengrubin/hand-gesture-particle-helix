@@ -4,8 +4,9 @@
 
 A pure Python implementation featuring 18 different wave shapes and 9 spiral structures, including DNA double helix, tornado spirals, and galaxy spirals - all controlled by your hand gestures!
 
-![Demo](https://via.placeholder.com/800x400/1a1a1a/00ff00?text=Demo+Video+Coming+Soon)
-<!-- Replace with actual demo GIF/video -->
+[![Demo video](https://img.youtube.com/vi/OJ7j9jlB0dE/maxresdefault.jpg)](https://youtu.be/OJ7j9jlB0dE)
+
+▶️ **[Watch the demo on YouTube](https://youtu.be/OJ7j9jlB0dE)**
 
 ## ✨ Features
 
