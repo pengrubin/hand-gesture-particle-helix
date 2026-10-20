@@ -16,14 +16,16 @@ import signal
 
 # 全局应用实例，用于信号处理和atexit清理
 _app_instance = None
-_cleanup_done = False
+_cleanup_done = False      # GestureParticleApp.cleanup() 是否已执行（由 cleanup() 自己维护）
+_emergency_done = False    # _emergency_cleanup() 是否已执行（独立守卫，不能复用 _cleanup_done）
 
 def _emergency_cleanup():
     """紧急清理函数 - 确保摄像头被释放"""
-    global _app_instance, _cleanup_done
-    if _cleanup_done:
+    global _app_instance, _emergency_done
+    if _emergency_done or _cleanup_done:
+        # 已经紧急清理过，或正常退出路径已完成 cleanup()，都无需再做
         return
-    _cleanup_done = True
+    _emergency_done = True
 
     print("\n[紧急清理] 正在释放资源...")
 
@@ -389,10 +391,10 @@ class GestureParticleApp:
         elif key == pygame.K_t:
             # T键：切换音频重启策略
             if hasattr(self, 'audio_manager') and self.audio_manager.enabled:
-                current_strategy = self.audio_manager.restart_from_beginning
+                current_strategy = self.audio_manager.restart_on_long_pause
                 new_strategy = not current_strategy
-                self.audio_manager.set_restart_strategy(new_strategy)
-                strategy_name = "Restart from beginning" if new_strategy else "Smart resume"
+                self.audio_manager.set_restart_on_long_pause(new_strategy)
+                strategy_name = "Restart after long pause" if new_strategy else "Always resume"
                 print(f"Audio strategy: {strategy_name}")
             else:
                 print("Audio system not initialized")

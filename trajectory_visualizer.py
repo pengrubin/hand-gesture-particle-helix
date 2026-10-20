@@ -15,7 +15,7 @@ Optimized for real-time display of thousands of trajectory points.
 import numpy as np
 import matplotlib.pyplot as plt
 from matplotlib.animation import FuncAnimation
-from matplotlib.collections import LineCollection, PointCollection
+from matplotlib.collections import LineCollection
 import matplotlib.patches as patches
 from matplotlib.colors import LinearSegmentedColormap
 import time

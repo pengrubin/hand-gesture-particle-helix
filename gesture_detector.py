@@ -609,7 +609,7 @@ class GestureDetector:
 
         self.is_running = True
         self.thread = threading.Thread(target=self._camera_loop)
-        self.thread.daemon = False  # 非守护线程，确保正常退出时能完成清理
+        self.thread.daemon = True  # 守护线程：正常退出由 stop_camera() 的 join 收尾；若 join 超时也不会卡住进程
         self.thread.start()
 
         return True

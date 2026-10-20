@@ -92,7 +92,6 @@ def show_help():
 
 启动方法：
     python run.py              # 启动完整应用
-    python run.py test          # 启动波浪形状测试模式
 
 系统要求：
     - Python 3.7+
@@ -149,14 +148,6 @@ def main():
     """主函数"""
     if len(sys.argv) > 1 and sys.argv[1] in ['-h', '--help', 'help']:
         show_help()
-        return
-    elif len(sys.argv) > 1 and sys.argv[1] in ['-t', '--test', 'test']:
-        print("启动波浪形状测试模式...")
-        try:
-            from test_shapes import main as test_main
-            test_main()
-        except ImportError as e:
-            print(f"测试模式启动失败: {e}")
         return
     
     print("=== 手势控制粒子波浪效果应用启动器 ===")
