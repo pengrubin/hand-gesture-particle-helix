@@ -67,8 +67,9 @@ camera permission is denied or you're testing audio sync in isolation.
 
 ## Deploy
 
-See [`DEPLOY.md`](./DEPLOY.md) for Vercel (recommended) and GitHub Pages
-walkthroughs.
+Cloudflare Workers is the current target (live at https://hand.pengrubin.com/).
+See [`DEPLOY.md`](./DEPLOY.md) for the Cloudflare setup, plus Vercel and
+GitHub Pages as alternatives.
 
 ## Architecture
 
@@ -110,7 +111,7 @@ fugue-web/
         composite.frag.glsl
         copy.frag.glsl
     hud/
-      statusPanel.ts      # audio/hands/active/lights/fps/tier/error
+      statusPanel.ts      # audio/hands/active/lights/fps/tier
       cameraPreview.ts    # mirrored video + landmark overlay
     util/
       keyboardFallback.ts # Shift+number debug input

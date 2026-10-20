@@ -8,7 +8,7 @@ Complete Python API documentation for the parametric equation gesture control sy
 
 ```
 gesture-parametric-system/
-├── hand_gesture_detector.py      # MediaPipe gesture recognition
+├── gesture_detector.py      # MediaPipe gesture recognition
 ├── gesture_radius_mapper.py      # Twelve-tone parameter mapping  
 ├── gesture_parametric_bridge.py  # Integration bridge
 ├── parametric_equation_renderer.py # Visualization renderer

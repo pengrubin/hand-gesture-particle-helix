@@ -1,12 +1,14 @@
 # PLAN.md — Fugue Hands web port
 
+*历史规划文档，写于实现之前。实际结构以 README.md 的目录树为准；本文提到的 hudRoot.ts、fpsMeter.ts、perfOverlay.ts、?debug=hands、postprocessing 依赖均未实现。*
+
 Browser implementation of the gesture-controlled Bach three-voice fugue
 visualization. Replaces the TouchDesigner + Python + BlackHole stack with a
 single static web app.
 
 ## 1. Project metadata
 
-- **Location**: `/Users/hongweipeng/hand-gesture-particle-helix/fugue-web/`
+- **Location**: `fugue-web/`
 - **npm package**: `fugue-hands`
 - **Node**: `>=20.11.0`
 - **Package manager**: `pnpm@9`

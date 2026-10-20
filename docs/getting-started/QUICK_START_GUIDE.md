@@ -39,11 +39,6 @@ pip install opencv-python mediapipe numpy pygame PyOpenGL
 
 ## 🎮 First Launch
 
-### Quick Start (No Camera)
-```bash
-python run.py test  # Test all spiral patterns without camera
-```
-
 ### Full Application
 ```bash
 python run.py  # Launch complete gesture control system
@@ -150,8 +145,7 @@ python run.py
 ### Quick Diagnostic Commands
 ```bash
 python run.py --help     # Show all options
-python test_gesture.py   # Test gesture recognition only
-python debug_camera.py   # Camera troubleshooting
+python tools/debug/camera_debug.py   # Camera troubleshooting
 ```
 
 ### Common Solutions

@@ -23,15 +23,10 @@ pip install opencv-python mediapipe numpy
 
 #### A. 手势检测模块
 1. 创建 `Text DAT`，重命名为 `gesture_detector`
-2. 复制 `hand_gesture_detector.py` 的全部内容到这个Text DAT
+2. 复制 `gesture_detector.py` 的全部内容到这个Text DAT
 3. 右键 → Parameters → Extension → 设置为 `.py`
 
-#### B. 数据处理模块
-1. 创建 `Text DAT`，重命名为 `data_processor`
-2. 复制 `td_data_processor.py` 的全部内容
-3. 设置 Extension 为 `.py`
-
-#### C. 粒子系统模块（简化版）
+#### B. 粒子系统模块（简化版）
 1. 创建 `Text DAT`，重命名为 `particle_controller`
 2. 复制以下简化的粒子控制代码：
 
@@ -133,9 +128,9 @@ def get_particle_count():
     return op.particle_controller.particle_count
 ```
 
-#### D. 球形渲染模块
+#### C. 球形渲染模块
 1. 创建 `Text DAT`，重命名为 `sphere_controller`
-2. 复制 `sphere_renderer.py` 的全部内容
+2. 复制 `particle_sphere_system.py` 的全部内容
 3. 设置 Extension 为 `.py`
 
 ### 3. 创建macOS适配的网络

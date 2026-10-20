@@ -57,7 +57,7 @@ FPS: 30
 #### Text DAT (`hand_gesture_detector`)
 ```python
 # Import existing hand gesture detector
-# File > Import > Select hand_gesture_detector.py
+# File > Import > Select gesture_detector.py
 ```
 
 #### Text DAT (`parametric_integration`)

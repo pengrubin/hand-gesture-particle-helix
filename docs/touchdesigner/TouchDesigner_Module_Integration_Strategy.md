@@ -26,8 +26,8 @@ Existing System (Preserved)          New System (Added)          Unified Control
 ### 1.2 Preserved vs Extended Components
 
 #### Preserved Components (No Changes)
-- `hand_gesture_detector.py` - MediaPipe gesture recognition
-- Core particle system logic in `particle_system.py`
+- `gesture_detector.py` - MediaPipe gesture recognition
+- Core particle system logic in `particle_sphere_system.py`
 - Existing TouchDesigner operator connections
 - Original particle rendering pipeline
 

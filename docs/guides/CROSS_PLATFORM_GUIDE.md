@@ -54,12 +54,12 @@ else:  # Linux
 
 1. **自动安装依赖**
 ```bash
-python setup_cross_platform.py
+python tools/debug/setup_cross_platform.py
 ```
 
 2. **运行手势检测**
 ```bash
-python cross_platform_gesture_detector.py
+python gesture_detector.py
 ```
 
 ### 手动安装
@@ -109,10 +109,10 @@ pip install "numpy>=1.21.0,<2.0.0"
 
 ### 基础使用
 ```python
-from cross_platform_gesture_detector import CrossPlatformGestureDetector
+from gesture_detector import GestureDetector
 
 # 创建检测器
-detector = CrossPlatformGestureDetector()
+detector = GestureDetector()
 
 # 启动摄像头
 detector.start_camera(0)
@@ -128,7 +128,7 @@ print(f"右手手势: {data['right_hand']['gesture']}")
 ### TouchDesigner集成
 ```python
 # 兼容原始接口
-from cross_platform_gesture_detector import GestureDetector
+from gesture_detector import GestureDetector
 
 # 在TouchDesigner中使用
 op.detector = GestureDetector()
@@ -196,9 +196,8 @@ print(detector.platform_info)
 
 ## 文件说明
 
-- `cross_platform_gesture_detector.py` - 新的跨平台手势检测器
-- `setup_cross_platform.py` - 自动安装和测试脚本
+- `gesture_detector.py` - 跨平台手势检测器
+- `tools/debug/setup_cross_platform.py` - 自动安装和测试脚本
 - `requirements_cross_platform.txt` - 跨平台依赖配置
-- `gesture_detector.py` - 原版检测器（仍可使用）
 
 现在您的项目可以在任何支持的平台上无缝运行！🚀

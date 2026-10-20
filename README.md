@@ -98,11 +98,6 @@ pip install -r requirements.txt
 python run.py
 ```
 
-### Test Mode (No Camera Required)
-```bash
-python run.py test
-```
-
 ### 🎵 Audio Setup (Optional)
 For the full audio experience, place MP3 files in the project directory:
 - `Fugue in G Trio violin-Violin.mp3` (Track 1 - Violin)
@@ -160,14 +155,11 @@ The audio system uses **intelligent resume strategies** to provide the best user
 
 ```
 ├── main_app.py                    # Main application entry point
-├── simple_resume_audio_manager.py # Smart resume audio system
+├── realistic_audio_manager.py     # Smart resume audio system
 ├── gesture_detector.py            # MediaPipe hand tracking
 ├── render_engine.py               # OpenGL 3D rendering
 ├── particle_sphere_system.py      # Particle and helix systems
 ├── run.py                         # Smart launcher with dependency checks
-├── test_shapes.py                 # Shape testing utilities
-├── test_gesture.py                # Gesture accuracy testing
-├── test_simple_audio.py           # Audio system testing
 ├── requirements.txt               # Python dependencies
 └── docs/                          # Documentation
     ├── PYTHON_README.md           # Detailed technical docs
@@ -176,21 +168,6 @@ The audio system uses **intelligent resume strategies** to provide the best user
 ```
 
 ## 🧪 Testing & Debugging
-
-### Test Gesture Recognition
-```bash
-python test_gesture.py
-```
-
-### Test All Shapes
-```bash
-python run.py test
-```
-
-### Test Smart Audio System
-```bash
-python test_simple_audio.py
-```
 
 ### Performance Monitoring
 - Real-time FPS counter
@@ -224,11 +201,10 @@ python test_simple_audio.py
 ### Adding New Shapes
 1. Add shape function to `particle_sphere_system.py`
 2. Update gesture mapping
-3. Test with `test_shapes.py`
 
 ### Audio System Customization
 1. Replace MP3 files with your own audio tracks (keep same filenames)
-2. Adjust volume fade speed in `advanced_audio_manager.py`
+2. Adjust volume fade speed in `realistic_audio_manager.py`
 3. Modify gesture-to-track mapping in `main_app.py`
 
 ### Adjusting Parameters
@@ -254,10 +230,6 @@ self.params = {
 ```bash
 # Install development dependencies
 pip install -r requirements.txt
-
-# Run tests
-python test_gesture.py
-python test_shapes.py
 
 # Check code style
 python -m flake8 *.py

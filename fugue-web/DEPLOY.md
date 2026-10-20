@@ -1,10 +1,27 @@
 # Deployment
 
-Two paths. Vercel is the recommended one — zero config, HTTPS, automatic
-preview URLs per branch. GitHub Pages is the backup if you'd rather keep
-everything on GitHub.
+Three paths. Cloudflare Workers is the one actually in use (live at
+https://hand.pengrubin.com/). Vercel is an alternative — zero config, HTTPS,
+automatic preview URLs per branch. GitHub Pages is the backup if you'd rather
+keep everything on GitHub.
 
-## Vercel (recommended)
+## Cloudflare Workers (current)
+
+Configured by `wrangler.jsonc` in this folder:
+
+- Worker name: `hand-gesture-particle-helix` (must match the Workers project
+  name in the Cloudflare dashboard).
+- Static-only: no server-side Worker code. `assets.directory` is `./dist`,
+  the Vite build output.
+- SPA fallback: `not_found_handling` is `single-page-application`, so unknown
+  routes return `index.html` with 200.
+
+Production builds are triggered by pushes to `main`. Bumping `version` in
+`package.json` is the established way to force a rebuild.
+
+Live URL: https://hand.pengrubin.com/
+
+## Vercel (alternative)
 
 1. Push `fugue-web/` to GitHub (any repo).
 2. https://vercel.com/new → import the repo.
@@ -12,17 +29,14 @@ everything on GitHub.
 4. Framework preset should auto-detect Vite. If not, choose "Vite".
 5. Click Deploy.
 
-That's it. `vercel.json` in this folder pins the install/build/output
-settings explicitly so Vercel doesn't second-guess `pnpm`.
-
 ### Notes
 
 - HTTPS is automatic, which the camera + MediaPipe both require.
 - Custom domain: project settings → Domains.
-- Build will fail if `../data/audio/*.mp3` is missing from the repo, since
-  `scripts/sync-audio.mjs` runs as part of `pnpm prepare-assets`. Make sure
-  the three stems are committed (or relax the `public/audio/*.mp3` rule in
-  `.gitignore` and commit them directly into `fugue-web/public/audio/`).
+- The three stems are committed directly in `public/audio/`.
+  `scripts/sync-audio.mjs` (run by `pnpm prepare-assets`) copies them from
+  `../data/audio/` when present and falls back to the committed copies when
+  the source files are missing, as in CI.
 - MediaPipe model (`hand_landmarker.task`, ~7MB) is fetched at build time
   by `scripts/download-model.mjs`. Vercel will pull it on each build.
 

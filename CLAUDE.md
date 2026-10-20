@@ -9,7 +9,7 @@ Three generations of the same idea, a Bach "Fugue in G Trio" (violin / lute / or
 | Layer | Where | Status |
 |---|---|---|
 | **fugue-web** browser port (TypeScript, Vite, Three.js, MediaPipe Tasks Vision, Web Audio) | `fugue-web/` | Active. All recent commits touch this. Live at https://hand.pengrubin.com/ (Cloudflare Workers). Intentionally minimal: gesture → voice switching only, no heavy GPU patterns, no EEG. |
-| Python desktop app (OpenCV + MediaPipe + pygame + PyOpenGL) | repo root `*.py`, `core/`, `data/` | Maintained but older. `python run.py`. |
+| Python desktop app (OpenCV + MediaPipe + pygame + PyOpenGL) | repo root `*.py`, `data/` | Maintained but older. `python run.py`. |
 | E_Major full-body pose → 11-track orchestra | `projects/e_major/` | Self-contained sub-project with its own `run.py`, requirements and `hand_gesture_detector.py`. Do not confuse with the root modules of the same name. |
 
 TouchDesigner project files (`*.toe`, `*.tox`, `*.toe.dir/`) exist locally but are gitignored. Docs for that integration are in `docs/touchdesigner/`.
@@ -35,7 +35,7 @@ There is no test runner and no linter. `tsc --noEmit` under strict mode (with `n
 
 Deploy targets, all static:
 - Cloudflare Workers via `wrangler.jsonc` (worker name `hand-gesture-particle-helix`, assets from `./dist`, SPA fallback). Production builds trigger from `main`; bumping `version` in `package.json` is the established way to force a rebuild.
-- Vercel via `vercel.json` (root directory `fugue-web`).
+- Vercel: import the repo with root directory `fugue-web`.
 - GitHub Pages: set `VITE_BASE_PATH=/<repo>/` at build time. See `fugue-web/DEPLOY.md`.
 
 Runtime flags: `?tier=low|mid|high` forces a quality tier for one visit. `Shift+1/2/3/5/0` simulates gestures without a camera.
@@ -50,7 +50,7 @@ python main_prototype.py [mapping|auto]      # parametric-curve prototype, see d
 python projects/e_major/run.py               # E_Major sub-project
 ```
 
-The root `.gitignore` excludes `test_*.py`, `debug_*.py` and `simple_*.py`, so test scripts referenced by `README.md` and by `run.py test` are not in a fresh clone. There is no pytest or flake8 configuration.
+There is no pytest or flake8 configuration.
 
 Audio stems live in `data/audio/` with fixed filenames (`Fugue in G Trio violin-Violin.mp3`, `Fugue in G Trio-Tenor_Lute.mp3`, `Fugue in G Trio Organ-Organ.mp3`). `*.mp3` is gitignored globally; the only committed copies are `fugue-web/public/audio/*.mp3`, re-allowed by `fugue-web/.gitignore` so CI builds succeed.
 
@@ -78,13 +78,13 @@ masterAnalyser → analyser.createSampler → {bass, mid, high} → sphere shade
 
 ## Architecture: Python desktop app
 
-Flat modules at the repo root. `core/` is not where the code lives: each `core/<area>/__init__.py` inserts the repo root into `sys.path` and re-exports from root modules, so `from core.gesture import GestureDetector` and `from gesture_detector import GestureDetector` are the same object.
+Flat modules at the repo root.
 
 - `main_app.py` wires `GestureDetector` (`gesture_detector.py`), `RenderEngine` (`render_engine.py`), `ParticleSphereSystem` (`particle_sphere_system.py`, the helix and wave shapes), `RealisticAudioManager` (`realistic_audio_manager.py`) and `AudioSpectrumAnalyzer`. It installs SIGINT/SIGTERM and `atexit` handlers to force camera release; keep that when touching startup or shutdown.
 - `gesture_detector.py` is the unified detector (stabilizer, cache, conductor analysis, region bounds) and ends with module-level functions (`initialize_detector`, `process_camera_frame`, `get_gesture_data`, ...) that are the TouchDesigner entry points.
-- `realistic_audio_manager.py` prefers `data/audio/` and falls back to the script directory. Pause/resume is virtual-position based because pygame cannot seek precisely; `docs/development/BUGFIX_SUMMARY.md` and `FUGUE_TECHNICAL_DESIGN.md` explain the strategy.
+- `realistic_audio_manager.py` prefers `data/audio/` and falls back to the script directory. Pause/resume is virtual-position based because pygame cannot seek precisely; `docs/development/BUGFIX_SUMMARY.md` explains the strategy.
 - The parametric-curve layer (`gesture_parametric_bridge.py`, `gesture_radius_mapper.py`, `parametric_equation_renderer.py`, `td_parametric_integration.py`, `td_gpu_*.py`, `parametric_curves.glsl`) and the trajectory layer (`trajectory_*.py`) are separate experiments driven by `main_prototype.py` and `live_gesture_parametric.py`, not by `main_app.py`.
-- `tools/` holds standalone scripts: `midi/` (mido-based MIDI → 3D model generators, outputs in `data/models/`), `music_visualizer/` (matplotlib chart programs analysed in `FUGUE_TECHNICAL_DESIGN.md`), `osc/` (Python → TouchDesigner OSC demo) and `debug/` (camera diagnostics).
+- `tools/` holds standalone scripts: `midi/` (pretty_midi/trimesh-based MIDI → 3D model generators, outputs in `data/models/`), `osc/` (Python → TouchDesigner OSC demo) and `debug/` (camera diagnostics).
 
 ## Docs worth opening first
 

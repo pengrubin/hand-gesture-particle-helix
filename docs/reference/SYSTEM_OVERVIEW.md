@@ -40,7 +40,7 @@ The Hand Gesture Parametric Control System is a comprehensive real-time visualiz
 ### Core System Components
 
 #### 1. Gesture Recognition Layer
-- **HandGestureDetector** (`hand_gesture_detector.py`)
+- **HandGestureDetector** (`gesture_detector.py`)
   - MediaPipe integration for hand landmark detection
   - Supports up to 3 simultaneous hands
   - Recognizes 0-5 finger gestures with high accuracy

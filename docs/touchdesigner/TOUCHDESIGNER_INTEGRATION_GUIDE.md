@@ -50,7 +50,7 @@ for package in packages:
    ```
    HandGestureParametric/
    ├── python/
-   │   ├── hand_gesture_detector.py
+   │   ├── gesture_detector.py
    │   ├── gesture_radius_mapper.py
    │   ├── parametric_equation_renderer.py
    │   ├── gesture_parametric_bridge.py
@@ -136,7 +136,7 @@ for package in packages:
    ```python
    # Create Text DAT
    hand_detector = root.create(textDAT, 'hand_detector')
-   hand_detector.par.file = 'python/hand_gesture_detector.py'
+   hand_detector.par.file = 'python/gesture_detector.py'
    
    # Initialize detector in onStart callback
    def onStart():

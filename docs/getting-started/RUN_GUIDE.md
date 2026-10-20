@@ -13,7 +13,7 @@
 
 ### 1. 一键安装依赖
 ```bash
-python setup_cross_platform.py
+python tools/debug/setup_cross_platform.py
 ```
 
 ### 2. 运行主应用
@@ -63,23 +63,9 @@ Python版本: 3.12.2
 
 ## 📊 运行测试
 
-### 检查兼容性
-```bash
-python test_main_app.py
-```
-输出示例：
-```
-=== 跨平台兼容性测试 ===
-运行平台: Darwin Apple Silicon
-✓ 跨平台手势检测器: 导入成功
-✓ 渲染引擎: 导入成功
-✓ 粒子系统: 导入成功
-🎉 所有模块都兼容！可以安全运行 python main_app.py
-```
-
 ### 单独测试手势检测
 ```bash
-python cross_platform_gesture_detector.py
+python gesture_detector.py
 ```
 
 ## 🎮 应用控制
@@ -123,7 +109,7 @@ python cross_platform_gesture_detector.py
 pip install -r requirements_cross_platform.txt
 
 # 或使用自动安装脚本
-python setup_cross_platform.py
+python tools/debug/setup_cross_platform.py
 ```
 
 ### 调试信息
@@ -145,9 +131,8 @@ python setup_cross_platform.py
 
 ## 📁 新文件说明
 
-- `cross_platform_gesture_detector.py` - 跨平台手势检测器
-- `setup_cross_platform.py` - 自动安装脚本  
-- `test_main_app.py` - 兼容性测试脚本
+- `gesture_detector.py` - 跨平台手势检测器
+- `tools/debug/setup_cross_platform.py` - 自动安装脚本  
 - `requirements_cross_platform.txt` - 跨平台依赖配置
 - `RUN_GUIDE.md` - 本指南
 

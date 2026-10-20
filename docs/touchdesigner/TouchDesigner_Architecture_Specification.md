@@ -24,7 +24,7 @@ Video In TOP → Python Scripts → Table DATs → Particle/Parametric Renderers
 
 #### Processing Layer
 - **Text DAT** (`hand_gesture_detector`)
-  - Contains: `hand_gesture_detector.py` 
+  - Contains: `gesture_detector.py` 
   - Functions: MediaPipe hand tracking and gesture classification
 
 - **Text DAT** (`parametric_integration`)
